@@ -27,18 +27,15 @@ Resolver.prototype.calcOperations = async function() {
 			continue;
 		}
 		if(Object.keys(this.rank).indexOf(sol.user_id) == -1) {
-			this.rank[sol.user_id] = {'score':0, 'penalty':0, 'user_id':sol.user_id};
+			this.rank[sol.user_id] = {'score':0, 'user_id':sol.user_id};
 			this.rank[sol.user_id].problem = {};
 			for(var i = 1; i <= this.problem_count; i++) {
 				this.rank[sol.user_id].problem[i] = {
-					'old_penalty':0,
-					'new_penalty':0,
 					'old_verdict':'NA',
 					'new_verdict':'NA',
 					'old_submissions':0,	//include the AC submission
 					'frozen_submissions': 0,
-					'new_submissions':0,
-					'ac_penalty':0
+					'new_submissions':0
 				};
 			}
 		}
@@ -50,8 +47,6 @@ Resolver.prototype.calcOperations = async function() {
             var ver = sol.verdict;
 			if(ver == 'AC') {
 				this.rank[sol.user_id].problem[sol.problem_index].old_submissions++;
-				//this.rank[sol.user_id].problem[sol.problem_index].ac_penalty = sol.submitted_seconds;
-				//this.rank[sol.user_id].problem[sol.problem_index].old_penalty = this.rank[sol.user_id].problem[sol.problem_index].ac_penalty + 20 * 60 * (this.rank[sol.user_id].problem[sol.problem_index].old_submissions - 1);
                 var num = 100;
 
                 ver = this.rank[sol.user_id].problem[sol.problem_index].old_verdict;
@@ -60,7 +55,6 @@ Resolver.prototype.calcOperations = async function() {
                     num -= num2;
                 }
 				this.rank[sol.user_id].score += num;
-				//this.rank[sol.user_id].penalty += this.rank[sol.user_id].problem[sol.problem_index].old_penalty;
             }else if (ver[0] == 'P') {
                 var num = parseInt(ver.substring(1, ver.length));
                 ver = this.rank[sol.user_id].problem[sol.problem_index].old_verdict;
@@ -88,8 +82,6 @@ Resolver.prototype.calcOperations = async function() {
                 this.rank[sol.user_id].problem[sol.problem_index].new_verdict = sol.verdict;
                 this.rank[sol.user_id].problem[sol.problem_index].frozen_submissions++;
                 this.rank[sol.user_id].problem[sol.problem_index].new_submissions = this.rank[sol.user_id].problem[sol.problem_index].old_submissions + this.rank[sol.user_id].problem[sol.problem_index].frozen_submissions;
-                //this.rank[sol.user_id].problem[sol.problem_index].ac_penalty = sol.submitted_seconds;
-                this.rank[sol.user_id].problem[sol.problem_index].new_penalty = this.rank[sol.user_id].problem[sol.problem_index].ac_penalty + 20 * 60 * (this.rank[sol.user_id].problem[sol.problem_index].new_submissions - 1);
             }
             else {
                 var old = this.rank[sol.user_id].problem[sol.problem_index].new_verdict;
@@ -112,9 +104,6 @@ Resolver.prototype.calcOperations = async function() {
 		this.rank2.push(this.rank[user_id]);
 	}
 	this.rank2.sort(function(a, b){
-		if(a.score == b.score) {
-			return a.penalty - b.penalty;
-		}
 		return b.score - a.score;
 	});
 	var rnk = 0;
@@ -129,7 +118,6 @@ Resolver.prototype.calcOperations = async function() {
 			this.rank[user_id].rank_show = rnk;
 		}
 	}
-	//this.rank2.length = 200;
 	this.rank_frozen = $.extend(true, [], this.rank2);
 	for(var i = this.rank2.length - 1; i >= 0; i--) {
 		var flag = true;
@@ -150,9 +138,7 @@ Resolver.prototype.calcOperations = async function() {
 						old_rank: i,
 						new_rank: -1,
 						old_rank_show: this.rank2[i].rank_show,
-						new_rank_show: -1,
-						old_penalty: this.rank2[i].problem[j].old_penalty,
-						new_penalty: this.rank2[i].problem[j].new_penalty
+						new_rank_show: -1
 					};
 					var tmp = this.rank2[i];
                     var ver = tmp.problem[j].new_verdict;
@@ -164,7 +150,6 @@ Resolver.prototype.calcOperations = async function() {
                             num -= num2;
                         }
 						tmp.score += num;
-						//tmp.penalty += tmp.problem[j].new_penalty;
                     }else if (ver[0] == 'P') {
                         var num = parseInt(ver.substring(1, ver.length));
                         var ver2 = tmp.problem[j].old_verdict;
@@ -178,12 +163,11 @@ Resolver.prototype.calcOperations = async function() {
                                 num = 0;
                         }
                         tmp.score += num;
-                        console.log(num);
                     }
 					tmp.problem[j].old_verdict = ver;
 					tmp.problem[j].new_verdict = "NA";
 					var k = i -1;
-					while(k >= 0 && (this.rank2[k].score < tmp.score || this.rank2[k].score == tmp.score && this.rank2[k].penalty > tmp.penalty)) {
+					while(k >= 0 && this.rank2[k].score < tmp.score) {
 						if (tmp.rank_show !== "*" && this.rank2[k].rank_show !== "*") {
 							tmp.rank_show--;
 							this.rank2[k].rank_show++;
@@ -202,12 +186,10 @@ Resolver.prototype.calcOperations = async function() {
 	}
     await sleep(100);
     var user_cnt = this.rank2.length;
-    console.log("user:", user_cnt)
     for (var i = 1; i < user_cnt; i++) {
         var now = $('#rank-'+ i.toString());
         var prev = $('#rank-'+ (i - 1).toString());
-        if (now.find('.solved').text() == prev.find('.solved').text() && now.find('.penalty').text() == prev.find('.penalty').text()) {
-            console.log(now.find('.solved').text());
+        if (now.find('.solved').text() == prev.find('.solved').text()) {
             now.find('.rank').text(prev.find('.rank').text());
         }
     }

@@ -31,10 +31,10 @@
 .rank, .content, .problems li {
     float: left;
 }
-.solved, .penalty {
+.solved {
     float: right;
 }
-.rank, .solved, .penalty {
+.rank, .solved {
     font-size: 35px;
     text-align: center;
     vertical-align: middle;
@@ -49,7 +49,7 @@
 .ac {
     background-color: #5eb95e;
 }
-.failed, .WA {
+.failed {
     background-color: #dd514c;
 }
 .frozen {
@@ -64,24 +64,10 @@
     background-color: #406b82;
 }
 
-.flash {
-    animation: flashing 500ms infinite;
-    -webkit-animation: flashing 500ms infinite; [>Safari and Chrome<]
-}
 .uncover {
     background-color: #BD995B;
-    animation: rotating 600ms infinite;
-    -webkit-animation: rotating 600ms infinite; [>Safari and Chrome<]
-}
-
-@keyframes flashing {
-    from { background-color: #8a6d3b }
-    to { background-color: #BD995B }
-}
-
-@-webkit-keyframes flashing {[>Safari and Chrome<]
-    from { background-color: #8a6d3b }
-    to { background-color: #BD995B }
+    animation: rotating 150ms infinite;
+    -webkit-animation: rotating 150ms infinite; /*Safari and Chrome*/
 }
 
 @keyframes rotating {
@@ -101,10 +87,6 @@
 .rank {
     width: 58px;
     height: 58px;
-    font-size: 35px;
-    text-align: center;
-    vertical-align: middle;
-    line-height: 83px;
     margin-right: 15px;
 }
 .name {
@@ -129,7 +111,4 @@
 }
 .solved {
     width: 70px;
-}
-.penalty {
-    width: 100px;
 }
