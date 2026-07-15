@@ -1,1 +1,5 @@
 .DS_Store
+
+# Generated contest data (export output, not source)
+contest.json
+contest.manifest.json
