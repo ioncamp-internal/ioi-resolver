@@ -10,7 +10,7 @@ function vuejs() {
     var OPER_FLAG_KEY = 'operation-flag';
 
     var OPEN_DELAY_TIME = 0;   //闪烁时间
-    var FLY_DELAY_MS = 900;    // 翻轉完成到起飛之間的停頓, 讓觀眾看清楚成績
+    var FLY_DELAY_MS = 120;    // 翻轉完成到起飛之間的停頓, 讓觀眾看清楚成績
     // 等速上升: 時間正比於距離, 所有隊伍同一個速度。
     // 原本是固定時距, 導致移動 1 列跟移動 15 列花一樣久, 距離越遠看起來越快。
     var FLY_SPEED_PX_S = 600;  // 每秒移動的像素
