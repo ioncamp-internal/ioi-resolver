@@ -3,3 +3,10 @@
 # Generated contest data (export output, not source)
 contest.json
 contest.manifest.json
+
+# Timestamped dumps from resolver-export (submissions.csv, tasks.json, manifests).
+# The tool itself under resolver-export/ stays tracked -- only its output is ignored.
+resolver-export/exports/
+
+__pycache__/
+*.pyc
