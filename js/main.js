@@ -10,14 +10,18 @@ function vuejs() {
     var OPER_FLAG_KEY = 'operation-flag';
 
     var OPEN_DELAY_TIME = 0;   //闪烁时间
-    var FLY_DELAY_MS = 120;    // 翻轉完成到起飛之間的停頓, 讓觀眾看清楚成績
-    // 等速上升: 時間正比於距離, 所有隊伍同一個速度。
+    var FLY_DELAY_MS = 300;    // 翻轉完成到起飛之間的停頓, 讓觀眾看清楚成績
+    // 上升時間正比於距離, 所有隊伍同一個基準速度。
     // 原本是固定時距, 導致移動 1 列跟移動 15 列花一樣久, 距離越遠看起來越快。
-    var FLY_SPEED_PX_S = 600;  // 每秒移動的像素
+    var FLY_SPEED_PX_S = 600;  // 平均每秒移動的像素
     var FLY_MIN_MS = 250;      // 太短的移動仍要看得出來在動
     function flyDuration(distance) {
         return Math.max(FLY_MIN_MS, Math.abs(distance) / FLY_SPEED_PX_S * 1000);
     }
+    // 起飛是漸加速的: 一開始慢慢離地, 越飛越快。
+    // 1 = 等速, 2 = 二次加速, 數字越大起步越慢、後段越猛。
+    var FLY_EASE_POWER = 2;
+    $.easing.flyUp = function(p){ return Math.pow(p, FLY_EASE_POWER); };
     window.Storage = {
         fetch: function(type) {
             if(type == 'ranks')
@@ -292,7 +296,7 @@ function vuejs() {
                     setTimeout(function(){
                         el_old
                             .css('position', 'relative')
-                            .animate({ top: distance+'px' }, flyDuration(distance), function(){
+                            .animate({ top: distance+'px' }, flyDuration(distance), 'flyUp', function(){
                                 el_new.removeAttr('style');
                                 el_old.removeAttr('style');
                                 var ranks_tmp = $.extend(true, [], ranks);
@@ -313,7 +317,7 @@ function vuejs() {
                         // 被擠下來的列只移動一格, 用同一個速度算它自己的時間
                         for(var i = 0 ; i<el_obj.length ; ++i) {
                             if(106*(i-1)<=win_heigth){
-                                el_obj[i].animate({'top': 106+'px'}, flyDuration(106));
+                                el_obj[i].animate({'top': 106+'px'}, flyDuration(106), 'flyUp');
                             }
                             else {
                                 el_obj[i].css({'top': 106+'px'});
