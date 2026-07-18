@@ -34,8 +34,9 @@ function vuejs() {
         { max_percentile: 0.50, multiplier: 1.0  }, // 26%-50%: 中速
         { max_percentile: 1.0,  multiplier: 0.7  }  // 51%-100%: 快速
     ];
-    // 需與 css/main.css 的 .uncover animation 週期一致, 否則翻轉會被切在半途
-    var UNCOVER_PERIOD = 150;
+    // 一次 frozen submission 翻一次牌; multiplier 調整的是「每次翻多快」, 不是「翻幾次」。
+    // 翻轉週期由 JS 寫進 inline style, css/main.css 的值只是 JS 失效時的後備。
+    var FLIP_BASE_MS = 600;
     function getSpeedConfig(old_rank, total) {
         var percentile = (old_rank + 1) / total;
         for(var i = 0; i < SPEED_TIERS.length; i++) {
@@ -60,17 +61,17 @@ function vuejs() {
             var el_old = $('#rank-' + op.old_rank);
             var el_new = $('#rank-' + op.new_rank);
 
-            // Rotate
-            el_old
-                .find('.p-'+op.problem_index)
-                .find('.p-content').addClass('uncover');
-            // 無條件進位到 UNCOVER_PERIOD 的整數倍(至少一圈), 讓動畫停在完整週期的邊界
-            var uncover_time = parseInt(op.frozen_submissions) * 600 * speed_mult;
-            uncover_time = Math.max(1, Math.ceil(uncover_time / UNCOVER_PERIOD)) * UNCOVER_PERIOD;
-            await sleep(uncover_time);
-            el_old
-                .find('.p-'+op.problem_index)
-                .find('.p-content').removeClass('uncover');
+            // Rotate: 翻的次數等於封榜後的提交次數, 總時長剛好是整數圈
+            var flip_count = Math.max(1, parseInt(op.frozen_submissions) || 0);
+            var flip_duration = FLIP_BASE_MS * speed_mult;
+            var el_flip = el_old.find('.p-'+op.problem_index).find('.p-content');
+            el_flip
+                .css({'animation-duration': flip_duration+'ms', '-webkit-animation-duration': flip_duration+'ms'})
+                .addClass('uncover');
+            await sleep(flip_count * flip_duration);
+            el_flip
+                .removeClass('uncover')
+                .css({'animation-duration': '', '-webkit-animation-duration': ''});
 
             if(op.new_rank == op.old_rank){
                 if(vm.$data.op_flag < op_length)

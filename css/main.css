@@ -66,8 +66,10 @@
 
 .uncover {
     background-color: #BD995B;
-    animation: rotating 150ms infinite;
-    -webkit-animation: rotating 150ms infinite; /*Safari and Chrome*/
+    /* 週期會被 js/main.js 的 inline animation-duration 覆寫(FLIP_BASE_MS x 速度倍率);
+       這裡的值只是後備 */
+    animation: rotating 600ms infinite;
+    -webkit-animation: rotating 600ms infinite; /*Safari and Chrome*/
 }
 
 @keyframes rotating {
