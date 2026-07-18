@@ -57,12 +57,26 @@ function vuejs() {
     // 否則會變成「人飛不見了, 然後跳出頒獎畫面」。
     function showSlideWhenSettled(slide) {
         var el_row = $('#rank-' + slide.row);
+        // 該隊的最後一次 focus: highlight 暫時從下一隊借過來, 停一拍讓觀眾看清楚
+        // 是誰、在第幾名, 然後才切投影片。
+        $('.selected').removeClass('selected');
+        el_row.addClass('selected');
         if(el_row.length) focusElement(el_row[0]);
         setTimeout(function(){
             vm.$data.slide_failed = false;
             vm.$data.slide = slide;
             slide_shown_at = Date.now();
         }, SLIDE_SETTLE_MS);
+    }
+
+    // 投影片期間 highlight 借給了得獎隊伍, 收掉後還給下一個要翻的隊伍
+    function restoreSelection() {
+        $('.selected').removeClass('selected');
+        if(vm.$data.op_flag < vm.$data.operations.length) {
+            var op = vm.$data.operations[vm.$data.op_flag];
+            $('#rank-' + op.old_rank).addClass('selected');
+        }
+        centerSelected();
     }
 
     // 兩條收尾路徑(原地不動 / 飛上去)共用的交棒動作。
@@ -93,7 +107,7 @@ function vuejs() {
         dismissSlide: function() {
             if(Date.now() - slide_shown_at < SLIDE_MIN_MS) return false;
             vm.$data.slide = null;
-            centerSelected();   // 投影片佔用了捲動位置, 收掉後把下一隊帶回中央
+            restoreSelection();
             vm.$data.op_status = true;
             return true;
         },
