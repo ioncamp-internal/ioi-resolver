@@ -9,8 +9,15 @@ function vuejs() {
     var RANKS_KEY = 'icpc-ranks';
     var OPER_FLAG_KEY = 'operation-flag';
 
-    var OPEN_DELAY_TIME = 0; //闪烁时间
-    var ROLLING_TIME = 1000; //排名上升时间
+    var OPEN_DELAY_TIME = 0;   //闪烁时间
+    var FLY_DELAY_MS = 900;    // 翻轉完成到起飛之間的停頓, 讓觀眾看清楚成績
+    // 等速上升: 時間正比於距離, 所有隊伍同一個速度。
+    // 原本是固定時距, 導致移動 1 列跟移動 15 列花一樣久, 距離越遠看起來越快。
+    var FLY_SPEED_PX_S = 600;  // 每秒移動的像素
+    var FLY_MIN_MS = 250;      // 太短的移動仍要看得出來在動
+    function flyDuration(distance) {
+        return Math.max(FLY_MIN_MS, Math.abs(distance) / FLY_SPEED_PX_S * 1000);
+    }
     window.Storage = {
         fetch: function(type) {
             if(type == 'ranks')
@@ -212,7 +219,7 @@ function vuejs() {
 
                     setTimeout(function(){
                         finishOperation(op_index, el_old, op.problem_index);
-                    }, OPEN_DELAY_TIME + 100);
+                    }, FLY_DELAY_MS);   // 沒有飛行, 但停頓保持一致
                 }, OPEN_DELAY_TIME);
             }else{
                 var old_pos_top = el_old.position().top;
@@ -282,10 +289,10 @@ function vuejs() {
                             });
                         });
 
-                    setTimeout(function(){ 
+                    setTimeout(function(){
                         el_old
                             .css('position', 'relative')
-                            .animate({ top: distance+'px' }, ROLLING_TIME * speed_mult, function(){
+                            .animate({ top: distance+'px' }, flyDuration(distance), function(){
                                 el_new.removeAttr('style');
                                 el_old.removeAttr('style');
                                 var ranks_tmp = $.extend(true, [], ranks);
@@ -303,15 +310,16 @@ function vuejs() {
                                 });
                                 Vue.nextTick(setRank);
                             });
+                        // 被擠下來的列只移動一格, 用同一個速度算它自己的時間
                         for(var i = 0 ; i<el_obj.length ; ++i) {
                             if(106*(i-1)<=win_heigth){
-                                el_obj[i].animate({'top': 106+'px'},ROLLING_TIME * speed_mult);
+                                el_obj[i].animate({'top': 106+'px'}, flyDuration(106));
                             }
                             else {
                                 el_obj[i].css({'top': 106+'px'});
                             }
                         }
-                    }, OPEN_DELAY_TIME + 100);
+                    }, FLY_DELAY_MS);
                 }, OPEN_DELAY_TIME);
             }
         }
