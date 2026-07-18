@@ -32,7 +32,7 @@ function vuejs() {
     var SPEED_TIERS = [
         { max_percentile: 0.25, multiplier: 1.6  }, // 前 25%: 慢速
         { max_percentile: 0.50, multiplier: 1.0  }, // 26%-50%: 中速
-        { max_percentile: 1.0,  multiplier: 0.5  }  // 51%-100%: 快速
+        { max_percentile: 1.0,  multiplier: 0.7  }  // 51%-100%: 快速
     ];
     // 需與 css/main.css 的 .uncover animation 週期一致, 否則翻轉會被切在半途
     var UNCOVER_PERIOD = 150;
