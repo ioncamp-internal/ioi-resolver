@@ -57,7 +57,7 @@ function vuejs() {
     // 否則會變成「人飛不見了, 然後跳出頒獎畫面」。
     function showSlideWhenSettled(slide) {
         var el_row = $('#rank-' + slide.row);
-        if(el_row.length) focusElement(el_row[0], 'center');
+        if(el_row.length) focusElement(el_row[0]);
         setTimeout(function(){
             vm.$data.slide_failed = false;
             vm.$data.slide = slide;
@@ -83,6 +83,7 @@ function vuejs() {
             // 包含中間等待歸位的那段空檔
             showSlideWhenSettled(slide);
         } else {
+            centerSelected();   // 下一隊先就定位, 按鍵時直接開翻
             vm.$data.op_status = true;
         }
     }
@@ -92,6 +93,7 @@ function vuejs() {
         dismissSlide: function() {
             if(Date.now() - slide_shown_at < SLIDE_MIN_MS) return false;
             vm.$data.slide = null;
+            centerSelected();   // 投影片佔用了捲動位置, 收掉後把下一隊帶回中央
             vm.$data.op_status = true;
             return true;
         },
@@ -334,6 +336,7 @@ function vuejs() {
             if(this.op_flag < this.operations.length){
                 var op = this.operations[this.op_flag];
                 this.selected($('#rank-'+op.old_rank), 'add');
+                Vue.nextTick(centerSelected);   // 一開場第一隊就在中央
             }
         },
 
@@ -391,29 +394,22 @@ $.getJSON("contest.json", function(data){
 
             if(advance && vm.$data.op_status){
                 e.preventDefault();
-                var elem = document.getElementsByClassName("selected")[0];
-                if (!isScrolledIntoView(elem))
-                    focusElement(elem);
+                centerSelected();   // 保險: 正常情況下上一筆收尾時已經置中了
                 Operation.next();
             }
             if(e.keyCode == 13) {
-                focusElement(document.getElementsByClassName("selected")[0]);
+                centerSelected();
             }
         };
     }
 });
 
-function isScrolledIntoView(elem) {
-    var docViewTop = $(window).scrollTop();
-    var docViewBottom = docViewTop + $(window).height();
-
-    var elemTop = $(elem).offset().top;
-    var elemBottom = elemTop + $(elem).height();
-
-    return ((elemBottom <= docViewBottom) && (elemTop >= docViewTop));
+function focusElement(elem) {
+    if(elem) elem.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
-function focusElement(elem, block) {
-    elem.scrollIntoView({ behavior: 'smooth', block: block || 'end' });
+// 正在翻牌的隊伍固定停在畫面正中央
+function centerSelected() {
+    focusElement(document.getElementsByClassName('selected')[0]);
 }
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
