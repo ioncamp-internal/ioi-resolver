@@ -196,26 +196,22 @@ body {
     正在翻牌的隊伍: 整列從紙面浮起, 其餘平貼。
     這是全場唯一一個被強調的東西, 其他地方保持安靜。
  */
+/* 正在翻牌的隊伍: 整列反相成暗帶。平面, 不用陰影浮雕 --
+   淺底榜單上這是對比最強的做法, 分數格壓在深底上也比壓在白底更跳。 */
 .selected {
-    background: #FFFDF6;
-    box-shadow: 0 14px 34px rgba(20, 32, 46, .30);
-    border-bottom-color: transparent;
+    background: var(--ink);
+    border-bottom-color: var(--ink);
     z-index: 5;
 }
-/* 全白榜單上光靠陰影浮不起來, 補一道左緣標記。
-   display 必須明寫: bootstrap 的 .clearfix:before 是 display:table, 同特異度會殘留 */
-.selected::before {
-    content: "";
-    display: block;
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 7px;
-    background: #C79A3C;
+.selected .rank {
+    color: #FFFFFF;
 }
 .selected .name {
-    color: var(--ink);
+    color: #AEBAC6;
+}
+/* 未作答在暗帶上要換一組框線, 原本的淺灰會整個消失 */
+.selected .untouched {
+    border-color: rgba(255, 255, 255, .30);
 }
 
 /*
