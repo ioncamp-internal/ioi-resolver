@@ -37,6 +37,8 @@ function vuejs() {
     // 一次 frozen submission 翻一次牌; multiplier 調整的是「每次翻多快」, 不是「翻幾次」。
     // 翻轉週期由 JS 寫進 inline style, css/main.css 的值只是 JS 失效時的後備。
     var FLIP_BASE_MS = 600;
+    var FLIP_ACCEL   = 0.8; // 每翻一次就縮短為前一次的 8 成, 越翻越快
+    var FLIP_MIN_MS  = 120; // 加速下限, 再快就看不出在翻了
     function getSpeedConfig(old_rank, total) {
         var percentile = (old_rank + 1) / total;
         for(var i = 0; i < SPEED_TIERS.length; i++) {
@@ -61,17 +63,29 @@ function vuejs() {
             var el_old = $('#rank-' + op.old_rank);
             var el_new = $('#rank-' + op.new_rank);
 
-            // Rotate: 翻的次數等於封榜後的提交次數, 總時長剛好是整數圈
+            // Rotate: 翻的次數等於封榜後的提交次數, 且一次比一次快。
+            // 每圈都是完整 360 度, 所以逐圈重啟動畫在視覺上是連續的。
             var flip_count = Math.max(1, parseInt(op.frozen_submissions) || 0);
             var flip_duration = FLIP_BASE_MS * speed_mult;
             var el_flip = el_old.find('.p-'+op.problem_index).find('.p-content');
-            el_flip
-                .css({'animation-duration': flip_duration+'ms', '-webkit-animation-duration': flip_duration+'ms'})
-                .addClass('uncover');
-            await sleep(flip_count * flip_duration);
+            el_flip.addClass('uncover');
+            for(var f = 0; f < flip_count; f++) {
+                // 先關掉 animation-name 再開, 中間強制 reflow, 這樣新的週期才會從 0 度重跑
+                el_flip.css({'animation-name': 'none', '-webkit-animation-name': 'none'});
+                el_flip[0].offsetWidth;
+                el_flip.css({
+                    'animation-duration': flip_duration+'ms', '-webkit-animation-duration': flip_duration+'ms',
+                    'animation-name': 'rotating', '-webkit-animation-name': 'rotating'
+                });
+                await sleep(flip_duration);
+                flip_duration = Math.max(FLIP_MIN_MS, flip_duration * FLIP_ACCEL);
+            }
             el_flip
                 .removeClass('uncover')
-                .css({'animation-duration': '', '-webkit-animation-duration': ''});
+                .css({
+                    'animation-duration': '', '-webkit-animation-duration': '',
+                    'animation-name': '', '-webkit-animation-name': ''
+                });
 
             if(op.new_rank == op.old_rank){
                 if(vm.$data.op_flag < op_length)

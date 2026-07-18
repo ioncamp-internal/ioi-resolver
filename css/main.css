@@ -72,14 +72,15 @@
     -webkit-animation: rotating 600ms infinite; /*Safari and Chrome*/
 }
 
+/* 必須轉滿 360 度: 停在 180 度會讓卡片以背面收尾, 再瞬間彈回正面 */
 @keyframes rotating {
     from { transform: rotateX(0); }
-    to { transform: rotateX(180deg); }
+    to { transform: rotateX(360deg); }
 }
 
 @-webkit-keyframes rotating {/*Safari and Chrome*/
     from { transform: rotateX(0); }
-    to { transform: rotateX(180deg); }
+    to { transform: rotateX(360deg); }
 }
 
 /*
