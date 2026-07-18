@@ -49,7 +49,21 @@ function vuejs() {
     }
 
     var slide_shown_at = 0;
-    var SLIDE_MIN_MS = 300; // 投影片剛跳出的這段時間內忽略按鍵, 避免連按秒關
+    var SLIDE_MIN_MS = 300;    // 投影片剛跳出的這段時間內忽略按鍵, 避免連按秒關
+    var SLIDE_SETTLE_MS = 900; // 該隊歸位後停這麼久再切投影片, 讓觀眾看清楚人在哪
+
+    // 升幅超過一個螢幕高時, 飛行動畫是刻意讓該列飛出畫面上緣, 再靠重繪歸位
+    // (見下方 distance 的處理)。所以切投影片前必須先確認該隊真的在觀眾視野裡,
+    // 否則會變成「人飛不見了, 然後跳出頒獎畫面」。
+    function showSlideWhenSettled(slide) {
+        var el_row = $('#rank-' + slide.row);
+        if(el_row.length) focusElement(el_row[0], 'center');
+        setTimeout(function(){
+            vm.$data.slide_failed = false;
+            vm.$data.slide = slide;
+            slide_shown_at = Date.now();
+        }, SLIDE_SETTLE_MS);
+    }
 
     // 兩條收尾路徑(原地不動 / 飛上去)共用的交棒動作。
     // 呼叫時該隊名次已定案, 所以這裡是掛頒獎投影片的正確時機。
@@ -65,10 +79,9 @@ function vuejs() {
 
         var slide = resolver.slides_by_op[op_index];
         if(slide) {
-            // op_status 保持 false: 投影片還在時按鍵只會關掉它, 不會推進揭曉
-            vm.$data.slide_failed = false;
-            vm.$data.slide = slide;
-            slide_shown_at = Date.now();
+            // op_status 保持 false: 從這裡到投影片關閉為止都不接受推進,
+            // 包含中間等待歸位的那段空檔
+            showSlideWhenSettled(slide);
         } else {
             vm.$data.op_status = true;
         }
@@ -399,8 +412,8 @@ function isScrolledIntoView(elem) {
 
     return ((elemBottom <= docViewBottom) && (elemTop >= docViewTop));
 }
-function focusElement(elem) {
-    elem.scrollIntoView({ behavior: 'smooth', block: 'end' });
+function focusElement(elem, block) {
+    elem.scrollIntoView({ behavior: 'smooth', block: block || 'end' });
 }
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));

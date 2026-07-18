@@ -23,9 +23,37 @@ Resolver.prototype.firstToSolve = function() {
 	return best;
 };
 
+// 重播 operations, 算出每隊「名次真正定案」的那一筆操作與最終列索引。
+//
+// 不能只看該隊自己最後一次翻牌: 揭曉並非嚴格由低到高逐隊收斂, 一支隊伍升上去之後,
+// 仍會被後面才解析的隊伍超越而被擠下來(實測 7 支裡有 5 支如此, 最多相差 14 個操作)。
+// 定案時間點 = max(自己最後一次翻牌, 最後一次被移動)。
+Resolver.prototype.settlePoints = function() {
+	var i, j, k, pos = [];
+	for(i = 0; i < this.rank_frozen.length; i++) pos.push(this.rank_frozen[i].user_id);
+
+	var own = {}, moved = {};
+	for(j = 0; j < this.operations.length; j++) {
+		var op = this.operations[j];
+		own[op.user_id] = j;
+		if(op.new_rank === op.old_rank) continue;
+
+		var before = {};
+		for(k = 0; k < pos.length; k++) before[pos[k]] = k;
+		pos.splice(op.new_rank, 0, pos.splice(op.old_rank, 1)[0]);
+		for(k = 0; k < pos.length; k++)
+			if(before[pos[k]] !== k) moved[pos[k]] = j;
+	}
+
+	var settled = {}, final_row = {}, order = [];
+	for(k = 0; k < pos.length; k++) { final_row[pos[k]] = k; order.push(pos[k]); }
+	for(var u in own)
+		settled[u] = (moved[u] === undefined) ? own[u] : max(own[u], moved[u]);
+	return { settled: settled, final_row: final_row, order: order };
+};
+
 // 把 slides.json 的規則解析成 { 操作索引: 投影片 }。
-// 錨點是「該隊最後一次翻牌」, 因為揭曉由下往上、每隊的操作連續,
-// 該筆操作的飛行動畫結束時該隊名次即已定案。必須在 calcOperations() 之後呼叫。
+// 錨點是該隊名次定案的那一筆操作(見 settlePoints)。必須在 calcOperations() 之後呼叫。
 Resolver.prototype.resolveSlides = function(config) {
 	this.slides_by_op = {};
 	if(!config) return this.slides_by_op;
@@ -34,19 +62,15 @@ Resolver.prototype.resolveSlides = function(config) {
 		return this.slides_by_op;
 	}
 
-	var i, last_op = {};
-	for(i = 0; i < this.operations.length; i++)
-		last_op[this.operations[i].user_id] = i;
-
-	var order = [];                       // 最終名次順序的 user_id
-	for(i = 0; i < this.rank2.length; i++) order.push(this.rank2[i].user_id);
+	var pts = this.settlePoints();
+	var settled = pts.settled, order = pts.order;
 
 	function anchorFor(user_id) {
-		if(last_op[user_id] !== undefined) return last_op[user_id];
+		if(settled[user_id] !== undefined) return settled[user_id];
 		// 該隊完全沒有封榜提交 -> 沒有自己的翻牌事件。
 		// 退而求其次掛在名次緊鄰其下、且有事件的隊伍, 等於揭曉經過他們時播放。
 		for(var j = order.indexOf(user_id) + 1; j < order.length; j++)
-			if(last_op[order[j]] !== undefined) return last_op[order[j]];
+			if(settled[order[j]] !== undefined) return settled[order[j]];
 		return -1;
 	}
 
@@ -54,6 +78,7 @@ Resolver.prototype.resolveSlides = function(config) {
 	var version = config.version || 1;
 	var dir = (config.slides_dir || 'slides').replace(/\/+$/, '');
 	var allow_pre_freeze = config.include_first_to_solve_before_freeze !== false;
+	var collisions = [];   // 撞點被捨棄的規則, 最後統一報告
 
 	for(var r = 0; r < config.rules.length; r++) {
 		var rule = config.rules[r], user_id = null, why;
@@ -80,18 +105,42 @@ Resolver.prototype.resolveSlides = function(config) {
 		var op = anchorFor(user_id);
 		if(op < 0) { console.warn('slides: no operation to anchor ' + why + ' to, skipped'); continue; }
 		if(this.slides_by_op[op]) {
-			console.warn('slides: operation ' + op + ' already shows "' + this.slides_by_op[op].why +
-			             '", dropping ' + why);
+			collisions.push({ op: op, kept: this.slides_by_op[op].why, dropped: why, team: user_id });
 			continue;
 		}
 		this.slides_by_op[op] = {
 			image_url: rule.image ? (dir + '/' + rule.image + '?v=' + version) : '',
 			citation: rule.citation || '',
 			why: why,
-			user_id: user_id
+			user_id: user_id,
+			row: pts.final_row[user_id]   // 切投影片前要把這一列捲回視野
 		};
 	}
+
+	this.reportSlides(collisions);
 	return this.slides_by_op;
+};
+
+// 載入時把結果印出來。撞點的規則會被捨棄(一個定案點只播一張), 這份報告就是
+// 用來告訴你「哪幾個獎項該合併成同一張圖」-- 一次操作常同時讓多隊定案,
+// 實測 25 隊只有 16 個相異定案點, 所以撞點是常態而非例外。
+Resolver.prototype.reportSlides = function(collisions) {
+	var ops = Object.keys(this.slides_by_op).map(Number).sort(function(a,b){ return a-b; });
+	console.log('slides: ' + ops.length + ' slide(s) scheduled across ' +
+	            this.operations.length + ' operations');
+	for(var i = 0; i < ops.length; i++) {
+		var s = this.slides_by_op[ops[i]];
+		console.log('  op ' + ops[i] + '  row ' + s.row + '  ' + s.why + '  (' + s.user_id + ')');
+	}
+	if(!collisions || !collisions.length) return;
+	console.warn('slides: ' + collisions.length + ' rule(s) dropped -- these teams settle at the ' +
+	             'same operation as an earlier rule. Put the awards on one image and delete the ' +
+	             'losing rule, or reorder "rules" to change which one wins:');
+	for(i = 0; i < collisions.length; i++) {
+		var c = collisions[i];
+		console.warn('  op ' + c.op + '  kept "' + c.kept + '"  dropped "' + c.dropped +
+		             '"  (' + c.team + ')');
+	}
 };
 
 Resolver.prototype.status = function(problem) {
