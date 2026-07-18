@@ -77,11 +77,11 @@ body {
 }
 .name {
     font-family: var(--cjk);
-    font-size: 19px;
+    font-size: 24px;
     font-weight: 500;
-    line-height: 22px;
+    line-height: 28px;
     color: var(--ink-soft);
-    margin: 0 0 5px 2px;
+    margin: 0 0 4px 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -196,22 +196,17 @@ body {
     正在翻牌的隊伍: 整列從紙面浮起, 其餘平貼。
     這是全場唯一一個被強調的東西, 其他地方保持安靜。
  */
-/* 正在翻牌的隊伍: 整列反相成暗帶。平面, 不用陰影浮雕 --
-   淺底榜單上這是對比最強的做法, 分數格壓在深底上也比壓在白底更跳。 */
+/* 正在翻牌的隊伍: 淡黃色整列。平面, 不用陰影浮雕。
+   陰影拿掉之後黃色要獨力承擔焦點訊號, 所以比單純的米白再飽和一階,
+   否則在白列之間看不出來。 */
 .selected {
-    background: var(--ink);
-    border-bottom-color: var(--ink);
+    background: #FCEFC0;
+    border-bottom-color: #F3E1A6;
     z-index: 5;
 }
-.selected .rank {
-    color: #FFFFFF;
-}
-.selected .name {
-    color: #AEBAC6;
-}
-/* 未作答在暗帶上要換一組框線, 原本的淺灰會整個消失 */
+/* 未作答在黃底上要把框線壓深一點, 原本的淺灰會被黃色吃掉 */
 .selected .untouched {
-    border-color: rgba(255, 255, 255, .30);
+    border-color: rgba(31, 41, 51, .18);
 }
 
 /*
