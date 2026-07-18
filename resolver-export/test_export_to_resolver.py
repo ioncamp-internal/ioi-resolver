@@ -76,10 +76,30 @@ class TestSubmissionWindow(unittest.TestCase):
 
 
 class TestHiddenParticipations(unittest.TestCase):
-    def test_hidden_user_is_excluded_from_ranking(self):
+    def test_hidden_user_is_dropped_entirely(self):
         cj, stats = convert([sub("temmie", 5000, 100.0, hidden=True)])
-        self.assertTrue(cj["users"]["temmie"]["is_exclude"])
+        self.assertNotIn("temmie", cj["users"])
+        self.assertEqual(cj["solutions"], {})
         self.assertEqual(stats["excluded_users"], ["temmie"])
+        self.assertEqual(stats["skipped_hidden"], 1)
+
+    def test_hidden_user_does_not_consume_a_solution_id(self):
+        cj, _ = convert([
+            sub("temmie", 4000, 100.0, hidden=True),
+            sub("alice", 5000, 100.0),
+        ])
+        self.assertEqual(sorted(cj["solutions"], key=int), ["1"])
+        self.assertEqual(cj["solutions"]["1"]["user_id"], "alice")
+
+    def test_hidden_user_cannot_take_first_to_solve(self):
+        # The real bug: an admin test account submitting early would otherwise
+        # own the earliest AC for a problem.
+        cj, _ = convert([
+            sub("temmie", 100, 100.0, hidden=True),
+            sub("alice", 5000, 100.0),
+        ])
+        acs = [s for s in cj["solutions"].values() if s["verdict"] == "AC"]
+        self.assertEqual([s["user_id"] for s in acs], ["alice"])
 
     def test_regular_user_is_not_excluded(self):
         cj, _ = convert([sub("alice", 5000, 100.0)])

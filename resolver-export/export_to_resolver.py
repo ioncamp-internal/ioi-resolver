@@ -201,8 +201,9 @@ def build_contest_json(meta, submissions, indices, max_scores, freeze_minutes):
     accepting submissions after the contest ends (students practising) and the
     admin's own test submissions predate the start; both would otherwise land
     past frozen_second and get "revealed" as if they had been earned during the
-    contest. Hidden participations are kept but marked is_exclude so they show
-    up without taking a rank.
+    contest. Hidden participations are dropped entirely: they used to be kept
+    and marked is_exclude, which left them occupying a row in the reveal and
+    let admin test accounts steal first-to-solve from real teams.
 
     Returns (contest_json, stats).
     """
@@ -215,6 +216,8 @@ def build_contest_json(meta, submissions, indices, max_scores, freeze_minutes):
     skipped_before_start = 0
     skipped_after_stop = 0
     skipped_excluded_task = 0
+    skipped_hidden = 0
+    hidden_users = set()
 
     seq = 0
     for row in submissions:
@@ -222,6 +225,11 @@ def build_contest_json(meta, submissions, indices, max_scores, freeze_minutes):
         if task_id not in indices:
             skipped_excluded_task += 1
             continue  # excluded task (no active dataset)
+
+        if row.get("hidden"):
+            skipped_hidden += 1
+            hidden_users.add(row["username"])
+            continue  # hidden participation (admin/test account)
 
         seconds = row["seconds_since_start"]
         if seconds < 0:
@@ -248,7 +256,9 @@ def build_contest_json(meta, submissions, indices, max_scores, freeze_minutes):
             users[username] = {
                 "name": display_name,
                 "college": "",
-                "is_exclude": bool(row.get("hidden")),
+                # Hidden participations never get here, but the frontend still
+                # branches on this field, so keep emitting it.
+                "is_exclude": False,
             }
 
     if skipped_before_start or skipped_after_stop:
@@ -259,11 +269,11 @@ def build_contest_json(meta, submissions, indices, max_scores, freeze_minutes):
             skipped_before_start, skipped_after_stop, duration_seconds,
         )
 
-    excluded_users = sorted(u for u, v in users.items() if v["is_exclude"])
+    excluded_users = sorted(hidden_users)
     if excluded_users:
         logger.info(
-            "Marked %d hidden participation(s) as is_exclude (shown as rank '*'): %s",
-            len(excluded_users), ", ".join(excluded_users),
+            "Dropped %d submission(s) from %d hidden participation(s): %s",
+            skipped_hidden, len(excluded_users), ", ".join(excluded_users),
         )
 
     if frozen_second > max_seen_seconds:
@@ -285,6 +295,7 @@ def build_contest_json(meta, submissions, indices, max_scores, freeze_minutes):
         "skipped_before_start": skipped_before_start,
         "skipped_after_stop": skipped_after_stop,
         "skipped_excluded_task": skipped_excluded_task,
+        "skipped_hidden": skipped_hidden,
         "excluded_users": excluded_users,
     }
     return contest_json, stats
