@@ -1,7 +1,25 @@
 /*
     main.css
+
+    榜單是一張「部分分熱力表」: 每一格的顏色就是它的得分。
+    IOI 賽制的重點是部分分, 所以格子不該只有解出/未解出兩種狀態。
  */
 
+:root {
+    --sheet:    #F2F3F5;   /* 頁面底 */
+    --row:      #FFFFFF;   /* 列面 */
+    --ink:      #1F2933;   /* 主要文字 */
+    --ink-soft: #6B7280;   /* 隊名等次要資訊 */
+    --line:     #DDE1E6;   /* 髮絲線 */
+    --pending:  #93A1B0;   /* 封榜未揭曉 */
+
+    --row-h:     106px;    /* 必須等於 js/main.js 飛行動畫的位移量 */
+    --cell-gap:  8px;
+
+    --num: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;
+    --cjk: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei",
+           "Hiragino Sans GB", "Heiti TC", sans-serif;
+}
 
 /*
     reset bootstrap
@@ -10,64 +28,206 @@
     margin-bottom: 0;
 }
 
+body {
+    background: var(--sheet);
+}
+
 /*
     common
  */
 .app {
-    color: white;
+    color: var(--ink);
+    background: var(--sheet);
+    font-family: var(--num), var(--cjk);
 }
 .rank-list {
-    background: repeating-linear-gradient(
-      180deg,
-      #3e3e3e 0px,
-      #3e3e3e 103px,
-      black 103px,
-      black 206px
-    );
+    background: var(--sheet);
 }
-.item {
-    border-radius: 3px;
-}
-.rank, .content, .problems li {
-    float: left;
-}
-.solved {
-    float: right;
-}
-.rank, .solved {
-    font-size: 35px;
-    text-align: center;
-    vertical-align: middle;
-    line-height: 83px;
-}
+
+/* 一列 = 名次 | 隊名 + 分數格 | 總分。
+   高度釘死成 --row-h: 飛行動畫按這個數字位移, 差一點就會逐列累積錯位。 */
 .rank-list-item {
-    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: var(--row-h);
+    box-sizing: border-box;
+    padding: 8px 28px;
     position: relative;
+    background: var(--row);
+    border-bottom: 1px solid var(--line);
+}
+
+.rank {
+    flex: 0 0 84px;
+    font-size: 34px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--ink);
+}
+
+.content {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+}
+.name {
+    font-family: var(--cjk);
+    font-size: 19px;
+    font-weight: 500;
+    line-height: 22px;
+    color: var(--ink-soft);
+    margin: 0 0 5px 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 格子平分整列寬度, 所以題數改變也不用調 CSS */
+.problems {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: var(--cell-gap);
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.problems .item {
+    flex: 1 1 0;
+    min-width: 0;
+    /* 讓 .p-content 的 rotateX 變成真正的翻牌 -- 沒有透視只會是垂直壓扁 */
+    perspective: 700px;
+}
+.p-content {
+    height: 100%;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #24303B;
     background: transparent;
 }
 
-.ac {
-    background-color: #5eb95e;
+.solved {
+    flex: 0 0 132px;
+    height: 62px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #FFFFFF;
 }
-.failed {
-    background-color: #dd514c;
-}
-.frozen {
-    background-color: #607D8B;
-}
+
+/*
+    格子狀態
+ */
+
+/* 未作答: 只留髮絲框, 才能和「作答但得 0 分」(色帶最紅端) 分得開 */
 .untouched {
-    background-color: #1f1f1f;
+    background: transparent;
+    border: 1px solid var(--line);
     color: transparent;
 }
 
-.selected {
-    background-color: #406b82;
+/* 封榜中: 刻意不在分數色帶上, 它還沒有分數。斜紋讀起來像未拆封 */
+.frozen {
+    background-color: var(--pending);
+    background-image: repeating-linear-gradient(
+        135deg,
+        rgba(255,255,255,.16) 0 6px,
+        rgba(255,255,255,0)   6px 12px
+    );
+    color: #FFFFFF;
+    font-size: 24px;
 }
 
+/*
+    分數色帶 (紅 -> 橙 -> 黃 -> 綠), 5 分一階。由 js/main.js 的 scoreLevel filter 指定。
+ */
+.sc-0   { background:#E8635F; }
+.sc-5   { background:#E86E5E; }
+.sc-10  { background:#E8795E; }
+.sc-15  { background:#E8845D; }
+.sc-20  { background:#E88F5D; }
+.sc-25  { background:#E89A5C; }
+.sc-30  { background:#E6A35C; }
+.sc-35  { background:#E4AC5C; }
+.sc-40  { background:#E3B65C; }
+.sc-45  { background:#E1BF5C; }
+.sc-50  { background:#DFC85C; }
+.sc-55  { background:#D7C75C; }
+.sc-60  { background:#D0C75C; }
+.sc-65  { background:#C8C65C; }
+.sc-70  { background:#C1C65C; }
+.sc-75  { background:#B9C55C; }
+.sc-80  { background:#ADC25C; }
+.sc-85  { background:#A2C05C; }
+.sc-90  { background:#96BD5C; }
+.sc-95  { background:#8BBB5C; }
+.sc-100 { background:#7FB85C; }
+
+/*
+    總分熱力階, 相對於當下榜上最高分。領先者拉開時顏色會跟著加深。
+ */
+.tt-0   { background:#B6863B; }
+.tt-10  { background:#B08A33; }
+.tt-20  { background:#A98D2C; }
+.tt-30  { background:#A29125; }
+.tt-40  { background:#99931E; }
+.tt-50  { background:#8E9219; }
+.tt-60  { background:#7F9017; }
+.tt-70  { background:#6F8D18; }
+.tt-80  { background:#5D8A1C; }
+.tt-90  { background:#4E8C22; }
+.tt-100 { background:#3F8F29; }
+
+/*
+    正在翻牌的隊伍: 整列從紙面浮起, 其餘平貼。
+    這是全場唯一一個被強調的東西, 其他地方保持安靜。
+ */
+.selected {
+    background: #FFFDF6;
+    box-shadow: 0 14px 34px rgba(20, 32, 46, .30);
+    border-bottom-color: transparent;
+    z-index: 5;
+}
+/* 全白榜單上光靠陰影浮不起來, 補一道左緣標記。
+   display 必須明寫: bootstrap 的 .clearfix:before 是 display:table, 同特異度會殘留 */
+.selected::before {
+    content: "";
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 7px;
+    background: #C79A3C;
+}
+.selected .name {
+    color: var(--ink);
+}
+
+/*
+    翻牌: 立體翻面 + 離開紙面的投影
+ */
 .uncover {
-    background-color: #BD995B;
-    /* 週期會被 js/main.js 的 inline animation-duration 覆寫(FLIP_BASE_MS x 速度倍率);
-       這裡的值只是後備 */
+    background-color: #C79A3C !important;
+    /* 蓋掉 .frozen 的斜紋: 翻牌是「正在揭曉」, 不該還帶著「未拆封」的紋理 */
+    background-image: none !important;
+    border-color: transparent;
+    color: #FFFFFF;
+    box-shadow: 0 8px 20px rgba(20, 32, 46, .35);
     animation: rotating 600ms infinite;
     -webkit-animation: rotating 600ms infinite; /*Safari and Chrome*/
 }
@@ -75,16 +235,16 @@
 /* 必須轉滿 360 度: 停在 180 度會讓卡片以背面收尾, 再瞬間彈回正面 */
 @keyframes rotating {
     from { transform: rotateX(0); }
-    to { transform: rotateX(360deg); }
+    to   { transform: rotateX(360deg); }
 }
 
 @-webkit-keyframes rotating {/*Safari and Chrome*/
     from { transform: rotateX(0); }
-    to { transform: rotateX(360deg); }
+    to   { transform: rotateX(360deg); }
 }
 
 /*
-    頒獎投影片
+    頒獎投影片 -- 與榜單是兩個場景, 這裡維持全暗
  */
 .slide-overlay {
     position: fixed;
@@ -105,6 +265,7 @@
     object-fit: contain;
 }
 .slide-citation {
+    font-family: var(--cjk);
     color: white;
     font-size: 48px;
     text-align: center;
@@ -114,37 +275,4 @@
 .slide-image + .slide-citation {
     font-size: 28px;
     opacity: 0.75;
-}
-
-/*
-    index
- */
-
-.rank {
-    width: 58px;
-    height: 58px;
-    margin-right: 15px;
-}
-.name {
-    font-size: 35px;
-    margin-bottom: 5px;
-}
-.problems {
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
-    font-size: 12px;
-}
-.problems .item {
-    padding: 2px;
-    margin-right: 5px;
-    width: 80px;
-    text-align: center;
-}
-.problems .item .p-content {
-    padding: 1px 0;
-    font-size: 15px;
-}
-.solved {
-    width: 70px;
 }

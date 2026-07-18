@@ -332,6 +332,33 @@ function vuejs() {
     Vue.filter('problemStatus', function (problem) {
         return resolver.status(problem);
     });
+
+    // 已定案的格子依得分上色(色帶見 css/main.css 的 .sc-*), 5 分一階。
+    // 封榜中與未作答刻意不給色帶: 前者還沒有分數, 混進色帶等於劇透;
+    // 後者要和「作答但得 0 分」看得出差別。
+    Vue.filter('scoreLevel', function (problem) {
+        var st = resolver.status(problem);
+        if(st !== 'ac' && st !== 'failed') return '';
+        var score = 0;
+        if(st === 'ac') score = 100;
+        else {
+            var ver = problem.old_verdict;
+            if(ver && ver[0] === 'P') score = parseInt(ver.substring(1)) || 0;
+        }
+        return 'sc-' + (Math.round(Math.min(100, Math.max(0, score)) / 5) * 5);
+    });
+
+    // 總分的熱力階, 相對於當下榜上最高分 -- 揭曉過程中會隨著領先者拉開而加深
+    Vue.filter('totalLevel', function (score) {
+        // Vue 1 會把 filter 的 this 綁到 vm。不能用裸的 vm --
+        // filter 註冊時 window.vm 還沒指派, 首次渲染會丟 ReferenceError,
+        // class 就整個渲染不出來(連帶讓 setRank 抓不到 .solved 而把名次全寫成第 1 名)。
+        var ranks = (this && this.ranks) || (window.vm && window.vm.$data.ranks), top = 0;
+        for(var i = 0; ranks && i < ranks.length; i++)
+            if(ranks[i].score > top) top = ranks[i].score;
+        if(!top) return 'tt-100';
+        return 'tt-' + (Math.round(Math.min(100, score / top * 100) / 10) * 10);
+    });
     
     Vue.filter('submissions', function (problem) {
         var st = resolver.status(problem);

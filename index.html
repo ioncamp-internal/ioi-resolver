@@ -8,7 +8,7 @@
         <link type="text/css" rel="stylesheet" href="libs/style/sticky-footer.css">
         <!-- 改動 css/main.css, hiho-resolver.js, js/main.js 後務必同步 bump ?v=,
              否則 Cloudflare 會沿用邊緣快取(預設 4 小時)繼續送舊檔 -->
-        <link type="text/css" rel="stylesheet" href="css/main.css?v=13">
+        <link type="text/css" rel="stylesheet" href="css/main.css?v=15">
     </head>
     <body class="app">
         <!-- top navbar -->
@@ -29,12 +29,12 @@
                 <div class="content">
                     <div class="name">{{ users[team.user_id].college ? users[team.user_id].college + '--' : '' }}{{ users[team.user_id].name }}</div>
                     <ul class="problems">
-                        <li v-for="n in p_count" class="{{team.problem[n+1]|problemStatus}} p-{{n+1}} item">
-                            <div class="{{team.problem[n+1]|problemStatus}} p-content">{{team.problem[n+1] | submissions}}</div>
+                        <li v-for="n in p_count" class="p-{{n+1}} item">
+                            <div class="{{team.problem[n+1]|problemStatus}} {{team.problem[n+1]|scoreLevel}} p-content">{{team.problem[n+1] | submissions}}</div>
                         </li>
                     </ul>
                 </div>
-                <div class="solved">{{ team.score }}</div>
+                <div class="solved {{team.score|totalLevel}}">{{ team.score }}</div>
             </div>
         </div>
 
@@ -54,7 +54,7 @@
         <!-- Include all compiled plugins (below), or include individual files as needed -->
         <script type="text/javascript" src="libs/js/jquery.min.js"></script>
         <script type="text/javascript" src="libs/js/vue.1.js"></script>
-        <script type="text/javascript" src="hiho-resolver.js?v=13"></script>
-        <script type="text/javascript" src="js/main.js?v=13"></script>
+        <script type="text/javascript" src="hiho-resolver.js?v=15"></script>
+        <script type="text/javascript" src="js/main.js?v=15"></script>
     </body>
 </html>
