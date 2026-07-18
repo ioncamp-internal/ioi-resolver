@@ -4,7 +4,95 @@ function Resolver(solutions, users, problem_count, frozen_second){
 	this.problem_count = problem_count;
 	this.frozen_seconds = frozen_second;
 	this.operations = [];
+	this.slides_by_op = {};
 }
+
+// 每題最早的 AC(依真實提交時間), 也就是一血。排除 is_exclude 帳號 --
+// 匯出端已經濾掉了, 這裡再擋一次是為了舊的 contest.json 也不會誤判。
+Resolver.prototype.firstToSolve = function() {
+	var best = {};
+	for(var id in this.solutions) {
+		var s = this.solutions[id];
+		if(s.verdict !== 'AC') continue;
+		var u = this.users[s.user_id];
+		if(!u || u.is_exclude === true) continue;
+		var cur = best[s.problem_index];
+		if(!cur || s.submitted_seconds < cur.seconds)
+			best[s.problem_index] = { user_id: s.user_id, seconds: s.submitted_seconds };
+	}
+	return best;
+};
+
+// 把 slides.json 的規則解析成 { 操作索引: 投影片 }。
+// 錨點是「該隊最後一次翻牌」, 因為揭曉由下往上、每隊的操作連續,
+// 該筆操作的飛行動畫結束時該隊名次即已定案。必須在 calcOperations() 之後呼叫。
+Resolver.prototype.resolveSlides = function(config) {
+	this.slides_by_op = {};
+	if(!config) return this.slides_by_op;
+	if(!Array.isArray(config.rules)) {
+		if(config.rules) console.warn('slides: "rules" must be an array, ignoring config');
+		return this.slides_by_op;
+	}
+
+	var i, last_op = {};
+	for(i = 0; i < this.operations.length; i++)
+		last_op[this.operations[i].user_id] = i;
+
+	var order = [];                       // 最終名次順序的 user_id
+	for(i = 0; i < this.rank2.length; i++) order.push(this.rank2[i].user_id);
+
+	function anchorFor(user_id) {
+		if(last_op[user_id] !== undefined) return last_op[user_id];
+		// 該隊完全沒有封榜提交 -> 沒有自己的翻牌事件。
+		// 退而求其次掛在名次緊鄰其下、且有事件的隊伍, 等於揭曉經過他們時播放。
+		for(var j = order.indexOf(user_id) + 1; j < order.length; j++)
+			if(last_op[order[j]] !== undefined) return last_op[order[j]];
+		return -1;
+	}
+
+	var fts = this.firstToSolve();
+	var version = config.version || 1;
+	var dir = (config.slides_dir || 'slides').replace(/\/+$/, '');
+	var allow_pre_freeze = config.include_first_to_solve_before_freeze !== false;
+
+	for(var r = 0; r < config.rules.length; r++) {
+		var rule = config.rules[r], user_id = null, why;
+		if(!rule || (!rule.image && !rule.citation)) {
+			console.warn('slides: rule ' + r + ' has neither image nor citation, skipped');
+			continue;
+		}
+
+		if(rule.type === 'rank') {
+			why = 'rank ' + rule.rank;
+			for(i = 0; i < this.rank2.length; i++)
+				if(this.rank2[i].rank_show === rule.rank) { user_id = this.rank2[i].user_id; break; }
+		} else if(rule.type === 'first-to-solve') {
+			why = 'first-to-solve p' + rule.problem;
+			var hit = fts[rule.problem];
+			if(hit && (allow_pre_freeze || hit.seconds > this.frozen_seconds))
+				user_id = hit.user_id;
+		} else {
+			console.warn('slides: unknown rule type ' + rule.type + ', skipped');
+			continue;
+		}
+
+		if(!user_id) { console.warn('slides: no team matched ' + why + ', skipped'); continue; }
+		var op = anchorFor(user_id);
+		if(op < 0) { console.warn('slides: no operation to anchor ' + why + ' to, skipped'); continue; }
+		if(this.slides_by_op[op]) {
+			console.warn('slides: operation ' + op + ' already shows "' + this.slides_by_op[op].why +
+			             '", dropping ' + why);
+			continue;
+		}
+		this.slides_by_op[op] = {
+			image_url: rule.image ? (dir + '/' + rule.image + '?v=' + version) : '',
+			citation: rule.citation || '',
+			why: why,
+			user_id: user_id
+		};
+	}
+	return this.slides_by_op;
+};
 
 Resolver.prototype.status = function(problem) {
 	if(problem.old_verdict == 'NA' && problem.new_verdict == 'NA')

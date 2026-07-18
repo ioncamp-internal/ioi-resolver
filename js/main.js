@@ -48,9 +48,44 @@ function vuejs() {
         return SPEED_TIERS[SPEED_TIERS.length - 1];
     }
 
+    var slide_shown_at = 0;
+    var SLIDE_MIN_MS = 300; // 投影片剛跳出的這段時間內忽略按鍵, 避免連按秒關
+
+    // 兩條收尾路徑(原地不動 / 飛上去)共用的交棒動作。
+    // 呼叫時該隊名次已定案, 所以這裡是掛頒獎投影片的正確時機。
+    function finishOperation(op_index, el_old, problem_index) {
+        var op_length = vm.$data.operations.length - 1;
+        vm.selected(el_old, 'remove');
+        if(vm.$data.op_flag < op_length) {
+            var op_next = vm.$data.operations[vm.$data.op_flag + 1];
+            vm.selected($('#rank-' + op_next.old_rank), 'add');
+        }
+        el_old.find('.p-' + problem_index).removeClass('uncover');
+        vm.$data.op_flag += 1;
+
+        var slide = resolver.slides_by_op[op_index];
+        if(slide) {
+            // op_status 保持 false: 投影片還在時按鍵只會關掉它, 不會推進揭曉
+            vm.$data.slide_failed = false;
+            vm.$data.slide = slide;
+            slide_shown_at = Date.now();
+        } else {
+            vm.$data.op_status = true;
+        }
+    }
+
     window.Operation = {
+        // 關掉目前的投影片並放行揭曉。太快按會被忽略, 回傳是否真的關掉了。
+        dismissSlide: function() {
+            if(Date.now() - slide_shown_at < SLIDE_MIN_MS) return false;
+            vm.$data.slide = null;
+            vm.$data.op_status = true;
+            return true;
+        },
+
         next: async function() {
             vm.$data.op_status = false;
+            var op_index = vm.$data.op_flag;
             var op = vm.$data.operations[vm.$data.op_flag];
             var op_length = vm.$data.operations.length - 1;
             if(vm.$data.op_flag < op_length)
@@ -88,9 +123,7 @@ function vuejs() {
                 });
 
             if(op.new_rank == op.old_rank){
-                if(vm.$data.op_flag < op_length)
-                    var el_old_next = $('#rank-' + op_next.old_rank);
-                setTimeout(function(){ 
+                setTimeout(function(){
                     var ver = op.new_verdict;
                     if(ver == 'AC'){
                         num = 100;
@@ -130,12 +163,7 @@ function vuejs() {
                     Vue.nextTick(setRank);
 
                     setTimeout(function(){
-                        vm.selected(el_old, 'remove');
-                        if(vm.$data.op_flag < op_length)
-                            vm.selected(el_old_next, 'add');
-                        el_old.find('.p-'+op.problem_index).removeClass('uncover');
-                        vm.$data.op_flag += 1;
-                        vm.$data.op_status = true;
+                        finishOperation(op_index, el_old, op.problem_index);
                     }, OPEN_DELAY_TIME + 100);
                 }, OPEN_DELAY_TIME);
             }else{
@@ -223,14 +251,7 @@ function vuejs() {
 
                                 Vue.nextTick(function () {
                                     el_obj.forEach(function(val,i){ el_obj[i].removeAttr('style'); });
-                                    el_old.find('.p-'+op.problem_index).removeClass('uncover');
-                                    if(vm.$data.op_flag < op_length)
-                                        var el_old_next = $('#rank-' + op_next.old_rank);
-                                    vm.selected(el_old, 'remove');
-                                    if(vm.$data.op_flag < op_length)
-                                        vm.selected(el_old_next, 'add');
-                                    vm.$data.op_flag += 1;
-                                    vm.$data.op_status = true;
+                                    finishOperation(op_index, el_old, op.problem_index);
                                 });
                                 Vue.nextTick(setRank);
                             });
@@ -283,7 +304,9 @@ function vuejs() {
             p_count: resolver.problem_count,
             ranks: Storage.fetch('ranks'),
             operations: resolver.operations,
-            users: resolver.users
+            users: resolver.users,
+            slide: null,       // 目前顯示的頒獎投影片, null 代表沒有
+            slide_failed: false // 圖片載不到 -> 只顯示 citation 文字
         },
 
         ready: function () {
@@ -314,6 +337,12 @@ function vuejs() {
                     el.addClass('selected');
                 }else if(type == 'remove')
                     el.removeClass('selected');
+            },
+
+            // 圖片還沒做好或路徑錯 -> 退回只顯示 citation 文字, 不要破圖
+            slideFailed: function(){
+                console.warn('slides: image not found, falling back to citation text');
+                this.slide_failed = true;
             }
         }
     });
@@ -323,20 +352,42 @@ $.getJSON("contest.json", function(data){
     var resolver = new Resolver(data.solutions, data.users, data.problem_count, data.frozen_second);
     window.resolver = resolver;
     resolver.calcOperations();
-    vuejs();
 
-    document.onkeydown = function(event){
-        var e = event || window.event || arguments.callee.caller.arguments[0];
-        if(e && e.keyCode == 39 && vm.$data.op_status){ // key right
-            var elem = document.getElementsByClassName("selected")[0];
-            if (!isScrolledIntoView(elem))
-                focusElement(elem);
-            Operation.next();
-        }
-        if(e && e.keyCode == 13) {
-            focusElement(document.getElementsByClassName("selected")[0]);
-        }
-    };
+    // slides.json 是選配: 載不到或壞掉就照常揭曉, 只是不播投影片
+    $.getJSON("slides.json")
+        .done(function(cfg){ resolver.resolveSlides(cfg); })
+        .fail(function(){ console.warn('slides: slides.json unavailable, running without slides'); })
+        .always(start);
+
+    function start(){
+        vuejs();
+
+        document.onkeydown = function(event){
+            var e = event || window.event || arguments.callee.caller.arguments[0];
+            if(!e) return;
+            var advance = (e.keyCode == 39 || e.keyCode == 32); // 右鍵 / 空白鍵
+
+            // 投影片顯示中: 這一下只負責關掉它, 不推進揭曉
+            if(vm.$data.slide){
+                if(advance){
+                    e.preventDefault();  // 空白鍵預設會捲動頁面
+                    Operation.dismissSlide();
+                }
+                return;
+            }
+
+            if(advance && vm.$data.op_status){
+                e.preventDefault();
+                var elem = document.getElementsByClassName("selected")[0];
+                if (!isScrolledIntoView(elem))
+                    focusElement(elem);
+                Operation.next();
+            }
+            if(e.keyCode == 13) {
+                focusElement(document.getElementsByClassName("selected")[0]);
+            }
+        };
+    }
 });
 
 function isScrolledIntoView(elem) {

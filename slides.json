@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "slides_dir": "slides",
+  "include_first_to_solve_before_freeze": true,
+  "rules": [
+    { "type": "rank", "rank": 1, "image": "champion.png", "citation": "冠軍" },
+    { "type": "rank", "rank": 2, "image": "runner-up.png", "citation": "亞軍" },
+    { "type": "rank", "rank": 3, "image": "third.png", "citation": "季軍" },
+
+    { "type": "first-to-solve", "problem": 1, "image": "fts-p1.png", "citation": "第 1 題一血" },
+    { "type": "first-to-solve", "problem": 2, "image": "fts-p2.png", "citation": "第 2 題一血" },
+    { "type": "first-to-solve", "problem": 3, "image": "fts-p3.png", "citation": "第 3 題一血" },
+    { "type": "first-to-solve", "problem": 4, "image": "fts-p4.png", "citation": "第 4 題一血" },
+    { "type": "first-to-solve", "problem": 5, "image": "fts-p5.png", "citation": "第 5 題一血" },
+    { "type": "first-to-solve", "problem": 7, "image": "fts-p7.png", "citation": "第 7 題一血" },
+    { "type": "first-to-solve", "problem": 8, "image": "fts-p8.png", "citation": "第 8 題一血" },
+    { "type": "first-to-solve", "problem": 9, "image": "fts-p9.png", "citation": "第 9 題一血" }
+  ]
+}

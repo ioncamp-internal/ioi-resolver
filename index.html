@@ -8,7 +8,7 @@
         <link type="text/css" rel="stylesheet" href="libs/style/sticky-footer.css">
         <!-- 改動 css/main.css, hiho-resolver.js, js/main.js 後務必同步 bump ?v=,
              否則 Cloudflare 會沿用邊緣快取(預設 4 小時)繼續送舊檔 -->
-        <link type="text/css" rel="stylesheet" href="css/main.css?v=5">
+        <link type="text/css" rel="stylesheet" href="css/main.css?v=6">
     </head>
     <body class="app">
         <!-- top navbar -->
@@ -38,6 +38,12 @@
             </div>
         </div>
 
+        <!-- 頒獎投影片: 該隊升到最終名次後全螢幕蓋掉排行榜, 按右鍵/空白鍵關閉 -->
+        <div class="slide-overlay" v-if="slide">
+            <img class="slide-image" v-if="slide.image_url && !slide_failed" src="{{ slide.image_url }}" @error="slideFailed">
+            <div class="slide-citation">{{ slide.citation }}</div>
+        </div>
+
         <!-- sticky footer -->
         <footer class="footer">
             <div class="container clearfix">
@@ -48,7 +54,7 @@
         <!-- Include all compiled plugins (below), or include individual files as needed -->
         <script type="text/javascript" src="libs/js/jquery.min.js"></script>
         <script type="text/javascript" src="libs/js/vue.1.js"></script>
-        <script type="text/javascript" src="hiho-resolver.js?v=5"></script>
-        <script type="text/javascript" src="js/main.js?v=5"></script>
+        <script type="text/javascript" src="hiho-resolver.js?v=6"></script>
+        <script type="text/javascript" src="js/main.js?v=6"></script>
     </body>
 </html>
