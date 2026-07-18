@@ -18,7 +18,8 @@ var state = {
     config: null,      // 編輯中的 slides.json
     resolver: null,    // 已跑過 calcOperations/buildSettleQueue
     images: [],        // slides/ 目錄裡的圖片檔名
-    imagesOk: false    // 目錄列表拿得到嗎(拿不到就退回手填)
+    imagesOk: false,   // 圖片清單拿得到嗎(拿不到就退回手填)
+    canWrite: false    // 是否連到 admin 埠 -- 只有本機才有寫入能力
 };
 
 // ---------------------------------------------------------------------------
@@ -32,9 +33,20 @@ function loadJSON(url) {
     });
 }
 
-// http.server 的目錄列表長這樣: <li><a href="x.png">x.png</a></li>
-// 換成沒有 autoindex 的伺服器就會失敗, 那時退回讓使用者自己填檔名。
+// 優先問 admin API(它同時代表「這台可以寫入」), 拿不到就退回解析目錄列表,
+// 再不行就讓使用者自己填檔名。
 function loadImages(dir) {
+    return fetch('api/images', { cache: 'no-store' })
+        .then(function(res){ if(!res.ok) throw new Error('no api'); return res.json(); })
+        .then(function(j){
+            state.images = j.images || [];
+            state.imagesOk = true;
+            state.canWrite = true;
+        })
+        .catch(function(){ return loadImagesFromListing(dir); });
+}
+
+function loadImagesFromListing(dir) {
     return fetch(dir.replace(/\/*$/, '/'), { cache: 'no-store' })
         .then(function(res){
             if(!res.ok) throw new Error('HTTP ' + res.status);
@@ -102,9 +114,16 @@ function render() {
         var el = node.querySelector('.rule');
         el.dataset.i = i;
         el.querySelector('.rule-no').textContent = '規則 ' + (i + 1);
-        el.querySelector('[data-f=type]').value = rule.type || 'rank';
-        el.querySelector('[data-f=rank]').value = rule.rank != null ? rule.rank : '';
-        el.querySelector('[data-f=problem]').value = rule.problem != null ? rule.problem : '';
+        var type = rule.type || 'rank';
+        el.querySelector('[data-f=type]').value = type;
+        // 用不到的欄位直接從 DOM 拿掉, 不是藏起來
+        el.querySelectorAll('[data-when]').forEach(function(f){
+            if(f.dataset.when !== type) f.remove();
+        });
+        var rankIn = el.querySelector('[data-f=rank]');
+        if(rankIn) rankIn.value = rule.rank != null ? rule.rank : '';
+        var probIn = el.querySelector('[data-f=problem]');
+        if(probIn) probIn.value = rule.problem != null ? rule.problem : '';
         el.querySelector('[data-f=citation]').value = rule.citation || '';
         fillImages(el.querySelector('[data-f=image]'), rule.image);
         host.appendChild(node);
@@ -122,7 +141,6 @@ function refresh() {
     Array.prototype.forEach.call(cards, function(el, i){
         var o = byIndex[i];
         if(o && o.status === 'ok') ok++;
-        toggleTypeFields(el);
         showTarget(el.querySelector('.target'), o);
         showPreview(el.querySelector('.preview'), state.config.rules[i]);
     });
@@ -130,8 +148,10 @@ function refresh() {
     var total = state.config.rules.length;
     document.getElementById('summary').textContent =
         total + ' 條規則 → ' + ok + ' 張會播出' + (total - ok ? ', ' + (total - ok) + ' 條不會' : '');
-    document.getElementById('dir-hint').textContent =
-        (state.config.slides_dir || 'slides').replace(/\/*$/, '/');
+    var dir = (state.config.slides_dir || 'slides').replace(/\/*$/, '/');
+    document.getElementById('dir-hint').textContent = dir;
+    var h2 = document.getElementById('dir-hint2');
+    if(h2) h2.textContent = dir;
 }
 
 function fillImages(select, current) {
@@ -150,13 +170,6 @@ function fillImages(select, current) {
     select.disabled = false;
     if(!state.imagesOk && !known.length)
         select.appendChild(new Option('（讀不到圖片目錄）', ''));
-}
-
-function toggleTypeFields(el) {
-    var type = el.querySelector('[data-f=type]').value;
-    el.querySelectorAll('[data-when]').forEach(function(f){
-        f.hidden = f.dataset.when !== type;
-    });
 }
 
 function showTarget(p, o) {
@@ -215,6 +228,8 @@ function onFieldChange(e) {
     if(f === 'type') {
         rule.type = e.target.value;
         if(rule.type === 'rank') delete rule.problem; else delete rule.rank;
+        render();   // 欄位組成變了, 必須重建
+        return;
     } else if(f === 'rank' || f === 'problem') {
         var n = parseInt(e.target.value, 10);
         if(isNaN(n)) delete rule[f]; else rule[f] = n;
@@ -224,6 +239,12 @@ function onFieldChange(e) {
         rule.citation = e.target.value;
     }
     refresh();   // 不重建 DOM, 否則正在打字的輸入框會失焦
+}
+
+function onFilePick(e) {
+    if(e.target.dataset.f !== 'upload') return;
+    uploadImage(e.target.files && e.target.files[0], ruleIndex(e.target));
+    e.target.value = '';
 }
 
 function onClick(e) {
@@ -237,6 +258,51 @@ function onClick(e) {
     else if(act === 'down' && i < rules.length - 1) rules.splice(i + 1, 0, rules.splice(i, 1)[0]);
     else return;
     render();
+}
+
+// ---------------------------------------------------------------------------
+// 上傳與儲存 (只有連到 admin 埠時才可用)
+// ---------------------------------------------------------------------------
+
+function say(msg, bad) {
+    var el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status' + (bad ? ' bad' : '');
+    if(!bad) setTimeout(function(){ if(el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+function uploadImage(file, ruleIdx) {
+    if(!file) return;
+    var name = file.name.replace(/[^A-Za-z0-9._-]/g, '_');
+    say('上傳 ' + name + ' …');
+    fetch('api/upload?name=' + encodeURIComponent(name), { method: 'POST', body: file })
+        .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+        .then(function(r){
+            if(!r.ok) throw new Error(r.j.error || '上傳失敗');
+            state.images = r.j.images || state.images;
+            if(ruleIdx >= 0) state.config.rules[ruleIdx].image = r.j.name;
+            // 換了圖就要 bump version, 否則 Cloudflare 會繼續送同名的舊圖
+            state.config.version = (parseInt(state.config.version, 10) || 1) + 1;
+            document.getElementById('version').value = state.config.version;
+            render();
+            say('已上傳 ' + r.j.name + '，版本自動加到 ' + state.config.version);
+        })
+        .catch(function(err){ say(err.message, true); });
+}
+
+function saveSlides() {
+    say('儲存中 …');
+    fetch('api/slides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state.config, null, 2)
+    })
+        .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+        .then(function(r){
+            if(!r.ok) throw new Error(r.j.error || '儲存失敗');
+            say('已寫入 slides.json（' + r.j.rules + ' 條規則），舊檔備份為 slides.json.bak');
+        })
+        .catch(function(err){ say(err.message, true); });
 }
 
 function download() {
@@ -279,10 +345,20 @@ loadJSON('contest.json')
         document.getElementById('pre-freeze').checked =
             state.config.include_first_to_solve_before_freeze !== false;
         document.getElementById('download').disabled = false;
+        document.getElementById('save').hidden = !state.canWrite;
 
         document.getElementById('rules').addEventListener('input', onFieldChange);
         document.getElementById('rules').addEventListener('change', onFieldChange);
         document.getElementById('rules').addEventListener('click', onClick);
+        document.getElementById('rules').addEventListener('change', onFilePick);
+        document.getElementById('save').addEventListener('click', saveSlides);
+        document.getElementById('upload-any').addEventListener('change', function(e){
+            uploadImage(e.target.files && e.target.files[0], -1);
+            e.target.value = '';
+        });
+        // 只有連到 admin 埠(本機)才給寫入能力
+        document.getElementById('writable').hidden = !state.canWrite;
+        document.getElementById('readonly').hidden = state.canWrite;
         document.getElementById('add').addEventListener('click', function(){
             state.config.rules.push({ type: 'rank', rank: 1, image: '', citation: '' });
             render();

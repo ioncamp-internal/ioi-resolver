@@ -210,3 +210,30 @@ select:focus { outline: 2px solid #C79A3C; outline-offset: 1px; }
     border-style: dashed;
     font-family: var(--cjk);
 }
+
+/* 上傳與儲存 -- 只有連到 admin 埠(本機)時才會出現 */
+.status {
+    font-family: var(--cjk);
+    font-size: 13px;
+    color: #9FE08A;
+}
+.status.bad { color: #FF9A96; }
+#save {
+    background: #3F8F29;
+    border-color: #3F8F29;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+#save:hover { background: #35771F; }
+.fields label.upload { font-size: 12px; }
+.fields input[type=file] {
+    font-size: 12px;
+    max-width: 190px;
+}
+.notice.warn {
+    background: #FDF1D6;
+    border-left: 4px solid #C79A3C;
+    color: #6B4E12;
+    padding: 12px 14px;
+    border-radius: 6px;
+}

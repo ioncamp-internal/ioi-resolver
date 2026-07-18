@@ -5,20 +5,37 @@
         <title>頒獎投影片設定</title>
         <!-- 改動 css/admin.css, js/admin.js 後務必同步 bump ?v=,
              否則 Cloudflare 會沿用邊緣快取(預設 4 小時)繼續送舊檔 -->
-        <link type="text/css" rel="stylesheet" href="css/main.css?v=18">
-        <link type="text/css" rel="stylesheet" href="css/admin.css?v=18">
+        <link type="text/css" rel="stylesheet" href="css/main.css?v=19">
+        <link type="text/css" rel="stylesheet" href="css/admin.css?v=19">
     </head>
     <body>
         <header class="bar">
             <h1>頒獎投影片設定</h1>
             <div class="bar-actions">
+                <span id="status" class="status"></span>
                 <span id="summary" class="summary">載入中…</span>
-                <button id="download" type="button" disabled>下載 slides.json</button>
+                <button id="download" type="button" disabled>下載</button>
+                <button id="save" type="button" hidden>儲存到伺服器</button>
             </div>
         </header>
 
         <main class="wrap">
             <p id="loaderr" class="notice error" hidden></p>
+
+            <p id="readonly" class="notice warn" hidden>
+                這是唯讀畫面。要上傳圖片與直接存檔，請在跑 resolver 的那台機器上開
+                <code>http://localhost:9588/admin.html</code>。寫入端點只綁本機，不會經過網際網路。
+            </p>
+
+            <section class="panel" id="writable" hidden>
+                <h2>圖片</h2>
+                <div class="fields">
+                    <label>上傳到 <code id="dir-hint2">slides/</code>
+                        <input id="upload-any" type="file" accept="image/*">
+                    </label>
+                    <small>上傳後版本會自動加一，避免 Cloudflare 送同名舊圖</small>
+                </div>
+            </section>
 
             <section class="panel">
                 <h2>整體設定</h2>
@@ -42,8 +59,9 @@
             <button id="add" type="button" class="add">新增規則</button>
 
             <p class="notice">
-                下載後把 <code>slides.json</code> 放回 resolver 目錄覆蓋原檔，
-                圖片放進 <code id="dir-hint">slides/</code>。這個頁面只在瀏覽器裡編輯，不會寫入伺服器。
+                「儲存到伺服器」會直接寫入 <code>slides.json</code>（舊檔備份成
+                <code>slides.json.bak</code>），圖片寫進 <code id="dir-hint">slides/</code>。
+                「下載」則是拿一份檔案自己放。
             </p>
         </main>
 
@@ -76,6 +94,9 @@
                     <label class="grow">文字
                         <input type="text" data-f="citation" spellcheck="false">
                     </label>
+                    <label class="upload">換圖
+                        <input type="file" data-f="upload" accept="image/*">
+                    </label>
                 </div>
                 <p class="target"></p>
                 <div class="preview"><div class="slide-overlay">
@@ -86,7 +107,7 @@
         </template>
 
         <script src="libs/js/jquery.min.js"></script>
-        <script src="hiho-resolver.js?v=18"></script>
-        <script src="js/admin.js?v=18"></script>
+        <script src="hiho-resolver.js?v=19"></script>
+        <script src="js/admin.js?v=19"></script>
     </body>
 </html>
