@@ -32,8 +32,10 @@ function vuejs() {
     var SPEED_TIERS = [
         { max_percentile: 0.25, multiplier: 1.6  }, // 前 25%: 慢速
         { max_percentile: 0.50, multiplier: 1.0  }, // 26%-50%: 中速
-        { max_percentile: 1.0,  multiplier: 0.15 }  // 51%-100%: 快速
+        { max_percentile: 1.0,  multiplier: 0.5  }  // 51%-100%: 快速
     ];
+    // 需與 css/main.css 的 .uncover animation 週期一致, 否則翻轉會被切在半途
+    var UNCOVER_PERIOD = 150;
     function getSpeedConfig(old_rank, total) {
         var percentile = (old_rank + 1) / total;
         for(var i = 0; i < SPEED_TIERS.length; i++) {
@@ -62,7 +64,10 @@ function vuejs() {
             el_old
                 .find('.p-'+op.problem_index)
                 .find('.p-content').addClass('uncover');
-            await sleep(parseInt(op.frozen_submissions) * 600 * speed_mult);
+            // 無條件進位到 UNCOVER_PERIOD 的整數倍(至少一圈), 讓動畫停在完整週期的邊界
+            var uncover_time = parseInt(op.frozen_submissions) * 600 * speed_mult;
+            uncover_time = Math.max(1, Math.ceil(uncover_time / UNCOVER_PERIOD)) * UNCOVER_PERIOD;
+            await sleep(uncover_time);
             el_old
                 .find('.p-'+op.problem_index)
                 .find('.p-content').removeClass('uncover');
