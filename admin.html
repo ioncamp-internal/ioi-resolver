@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+    <head>
+        <meta charset="utf-8">
+        <title>頒獎投影片設定</title>
+        <!-- 改動 css/admin.css, js/admin.js 後務必同步 bump ?v=,
+             否則 Cloudflare 會沿用邊緣快取(預設 4 小時)繼續送舊檔 -->
+        <link type="text/css" rel="stylesheet" href="css/main.css?v=18">
+        <link type="text/css" rel="stylesheet" href="css/admin.css?v=18">
+    </head>
+    <body>
+        <header class="bar">
+            <h1>頒獎投影片設定</h1>
+            <div class="bar-actions">
+                <span id="summary" class="summary">載入中…</span>
+                <button id="download" type="button" disabled>下載 slides.json</button>
+            </div>
+        </header>
+
+        <main class="wrap">
+            <p id="loaderr" class="notice error" hidden></p>
+
+            <section class="panel">
+                <h2>整體設定</h2>
+                <div class="fields">
+                    <label>圖片目錄
+                        <input id="slides-dir" type="text" spellcheck="false">
+                    </label>
+                    <label>版本
+                        <input id="version" type="number" min="1" step="1">
+                        <small>換圖後要加一，否則 Cloudflare 會繼續送舊圖</small>
+                    </label>
+                    <label class="checkbox">
+                        <input id="pre-freeze" type="checkbox">
+                        封榜前就拿下的一血也要播
+                    </label>
+                </div>
+            </section>
+
+            <section id="rules"></section>
+
+            <button id="add" type="button" class="add">新增規則</button>
+
+            <p class="notice">
+                下載後把 <code>slides.json</code> 放回 resolver 目錄覆蓋原檔，
+                圖片放進 <code id="dir-hint">slides/</code>。這個頁面只在瀏覽器裡編輯，不會寫入伺服器。
+            </p>
+        </main>
+
+        <template id="rule-tpl">
+            <article class="rule">
+                <div class="rule-head">
+                    <span class="rule-no"></span>
+                    <div class="rule-move">
+                        <button type="button" data-act="up" title="往前移">↑</button>
+                        <button type="button" data-act="down" title="往後移">↓</button>
+                        <button type="button" data-act="del" class="del" title="刪除">刪除</button>
+                    </div>
+                </div>
+                <div class="fields">
+                    <label>類型
+                        <select data-f="type">
+                            <option value="rank">名次</option>
+                            <option value="first-to-solve">一血</option>
+                        </select>
+                    </label>
+                    <label data-when="rank">名次
+                        <input type="number" min="1" step="1" data-f="rank">
+                    </label>
+                    <label data-when="first-to-solve">題號
+                        <input type="number" min="1" step="1" data-f="problem">
+                    </label>
+                    <label>圖片
+                        <select data-f="image"></select>
+                    </label>
+                    <label class="grow">文字
+                        <input type="text" data-f="citation" spellcheck="false">
+                    </label>
+                </div>
+                <p class="target"></p>
+                <div class="preview"><div class="slide-overlay">
+                    <img class="slide-image" alt="">
+                    <div class="slide-citation"></div>
+                </div></div>
+            </article>
+        </template>
+
+        <script src="libs/js/jquery.min.js"></script>
+        <script src="hiho-resolver.js?v=18"></script>
+        <script src="js/admin.js?v=18"></script>
+    </body>
+</html>

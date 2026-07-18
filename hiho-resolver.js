@@ -96,12 +96,23 @@ Resolver.prototype.resolveSlides = function(config) {
 	var version = config.version || 1;
 	var dir = (config.slides_dir || 'slides').replace(/\/+$/, '');
 	var allow_pre_freeze = config.include_first_to_solve_before_freeze !== false;
-	var collisions = [];   // 同一隊被多條規則指到, 只能留一張
+	// 同一隊被多條規則指到, 只能留一張。掛在 this 上讓 admin.html 讀得到 --
+	// 揭曉端只把它印到 console, 設定頁需要把它顯示出來。
+	var collisions = this.collisions = [];
+	// 每條規則的結果, 供設定頁逐條顯示落在誰身上或為什麼沒播
+	var outcomes = this.rule_outcomes = [];
+	function outcome(index, why, status, extra) {
+		var o = { index: index, why: why, status: status };
+		for(var k in (extra || {})) o[k] = extra[k];
+		outcomes.push(o);
+		return o;
+	}
 
 	for(var r = 0; r < config.rules.length; r++) {
 		var rule = config.rules[r], user_id = null, why;
 		if(!rule || (!rule.image && !rule.citation)) {
 			console.warn('slides: rule ' + r + ' has neither image nor citation, skipped');
+			outcome(r, 'rule ' + r, 'empty');
 			continue;
 		}
 
@@ -116,19 +127,32 @@ Resolver.prototype.resolveSlides = function(config) {
 				user_id = hit.user_id;
 		} else {
 			console.warn('slides: unknown rule type ' + rule.type + ', skipped');
+			outcome(r, 'rule ' + r, 'unknown-type');
 			continue;
 		}
 
-		if(!user_id) { console.warn('slides: no team matched ' + why + ', skipped'); continue; }
+		if(!user_id) {
+			console.warn('slides: no team matched ' + why + ', skipped');
+			outcome(r, why, 'unmatched');
+			continue;
+		}
 		if(this.final_row[user_id] === undefined) {
 			console.warn('slides: ' + user_id + ' never settles, cannot show ' + why);
+			outcome(r, why, 'never-settles', { user_id: user_id });
 			continue;
 		}
 		if(this.slides_by_team[user_id]) {
 			collisions.push({ kept: this.slides_by_team[user_id].why, dropped: why, team: user_id });
+			outcome(r, why, 'collision', {
+				user_id: user_id,
+				kept: this.slides_by_team[user_id].why,
+				kept_index: this.slides_by_team[user_id].rule_index
+			});
 			continue;
 		}
+		outcome(r, why, 'ok', { user_id: user_id, row: this.final_row[user_id] });
 		this.slides_by_team[user_id] = {
+			rule_index: r,
 			image_url: rule.image ? (dir + '/' + rule.image + '?v=' + version) : '',
 			citation: rule.citation || '',
 			why: why,
