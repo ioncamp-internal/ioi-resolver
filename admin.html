@@ -1,113 +1,398 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-    <head>
-        <meta charset="utf-8">
-        <title>頒獎投影片設定</title>
-        <!-- 改動 css/admin.css, js/admin.js 後務必同步 bump ?v=,
-             否則 Cloudflare 會沿用邊緣快取(預設 4 小時)繼續送舊檔 -->
-        <link type="text/css" rel="stylesheet" href="css/main.css?v=19">
-        <link type="text/css" rel="stylesheet" href="css/admin.css?v=19">
-    </head>
-    <body>
-        <header class="bar">
-            <h1>頒獎投影片設定</h1>
-            <div class="bar-actions">
-                <span id="status" class="status"></span>
-                <span id="summary" class="summary">載入中…</span>
-                <button id="download" type="button" disabled>下載</button>
-                <button id="save" type="button" hidden>儲存到伺服器</button>
-            </div>
-        </header>
+<head>
+<meta charset="utf-8">
+<title>頒獎投影片設定</title>
+<!--
+  單一檔案, 不需要伺服器: 存到任何地方雙擊開啟即可。
 
-        <main class="wrap">
-            <p id="loaderr" class="notice error" hidden></p>
+  按「選擇 resolver 資料夾」一次載入 contest.json、slides.json、hiho-resolver.js
+  與 slides/ 裡的圖片清單。解析預覽跑的是 hiho-resolver.js 本人, 不是複製品,
+  所以這裡看到的落點與碰撞就是揭曉當下會發生的事。
 
-            <p id="readonly" class="notice warn" hidden>
-                這是唯讀畫面。要上傳圖片與直接存檔，請在跑 resolver 的那台機器上開
-                <code>http://localhost:9588/admin.html</code>。寫入端點只綁本機，不會經過網際網路。
-            </p>
+  編輯完按「下載 slides.json」, 再用 VS Code 的檔案總管拖回 resolver 資料夾。
+  圖片同樣用拖的放進 slides/。
+-->
+<style>
+:root{
+  --sheet:#F2F3F5; --row:#fff; --ink:#1F2933; --soft:#6B7280; --line:#DDE1E6;
+  --num:"Helvetica Neue",Helvetica,Arial,"Segoe UI",Roboto,sans-serif;
+  --cjk:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Hiragino Sans GB",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--sheet);color:var(--ink);font-family:var(--num),var(--cjk)}
+.bar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;
+     gap:20px;padding:14px 28px;background:var(--ink);color:#fff;flex-wrap:wrap}
+.bar h1{font-family:var(--cjk);font-size:19px;font-weight:600;margin:0}
+.bar-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.summary{font-size:14px;color:#C6D0DA;font-variant-numeric:tabular-nums}
+button,.filebtn{font:inherit;font-size:14px;padding:7px 14px;border:1px solid var(--line);
+  border-radius:6px;background:#fff;color:var(--ink);cursor:pointer;display:inline-block}
+button:hover,.filebtn:hover{background:#F6F7F9}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,.filebtn:focus-within{outline:2px solid #C79A3C;outline-offset:2px}
+#download{background:#C79A3C;border-color:#C79A3C;color:#fff;font-weight:600}
+#download:hover:not(:disabled){background:#B98D31}
+.filebtn{background:#3F8F29;border-color:#3F8F29;color:#fff;font-weight:600}
+.filebtn:hover{background:#35771F}
+.filebtn input{display:none}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 28px 80px}
+.panel,.rule{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:14px}
+.panel h2{font-family:var(--cjk);font-size:15px;font-weight:600;color:var(--soft);margin:0 0 12px}
+.fields{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px}
+.fields label{display:flex;flex-direction:column;gap:5px;font-family:var(--cjk);font-size:13px;color:var(--soft)}
+.fields label.grow{flex:1 1 260px}
+.fields label.checkbox{flex-direction:row;align-items:center;gap:7px}
+.fields small{font-size:11px;color:#9AA5B1}
+input[type=text],input[type=number],select{font:inherit;font-size:15px;padding:7px 9px;
+  border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+input[type=number]{width:96px}
+input:focus,select:focus{outline:2px solid #C79A3C;outline-offset:1px}
+.rule-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.rule-no{font-family:var(--cjk);font-size:14px;font-weight:600;color:var(--soft)}
+.rule-move{display:flex;gap:6px}
+.rule-move button{padding:4px 10px}
+.rule-move .del{color:#B3261E}
+.target{font-family:var(--cjk);font-size:14px;margin:12px 0 0;padding:9px 12px;
+  border-radius:6px;border-left:4px solid transparent}
+.target:empty{display:none}
+.target.ok{background:#EEF6E9;border-left-color:#7FB85C;color:#35521F}
+.target.warn{background:#FDF1D6;border-left-color:#C79A3C;color:#6B4E12}
+/* 預覽刻意複製 css/main.css 的 .slide-overlay 外觀, 這個檔要能獨立運作 */
+.preview{position:relative;height:190px;margin-top:12px;border-radius:8px;overflow:hidden;
+  background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.preview img{max-width:100%;max-height:100%;object-fit:contain}
+.preview .cap{color:#fff;font-family:var(--cjk);font-size:26px;text-align:center;padding:12px}
+.preview img+.cap{font-size:15px;opacity:.75}
+.notice{font-family:var(--cjk);font-size:13px;line-height:1.7;color:var(--soft);margin:18px 0 0}
+.notice code{font-family:var(--num);font-size:12px;background:#E9ECEF;padding:1px 6px;border-radius:4px;color:var(--ink)}
+.notice.error{background:#FDECEA;border-left:4px solid #E8635F;color:#7A241F;padding:12px 14px;border-radius:6px}
+.notice.hint{background:#fff;border:1px solid var(--line);padding:16px 18px;border-radius:10px;font-size:14px}
+.add{display:block;width:100%;padding:12px;border-style:dashed;font-family:var(--cjk)}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>頒獎投影片設定</h1>
+  <div class="bar-actions">
+    <span id="summary" class="summary"></span>
+    <label class="filebtn">選擇 resolver 資料夾
+      <input id="pick" type="file" webkitdirectory directory multiple>
+    </label>
+    <button id="download" type="button" disabled>下載 slides.json</button>
+  </div>
+</header>
 
-            <section class="panel" id="writable" hidden>
-                <h2>圖片</h2>
-                <div class="fields">
-                    <label>上傳到 <code id="dir-hint2">slides/</code>
-                        <input id="upload-any" type="file" accept="image/*">
-                    </label>
-                    <small>上傳後版本會自動加一，避免 Cloudflare 送同名舊圖</small>
-                </div>
-            </section>
+<main class="wrap">
+  <p id="err" class="notice error" hidden></p>
 
-            <section class="panel">
-                <h2>整體設定</h2>
-                <div class="fields">
-                    <label>圖片目錄
-                        <input id="slides-dir" type="text" spellcheck="false">
-                    </label>
-                    <label>版本
-                        <input id="version" type="number" min="1" step="1">
-                        <small>換圖後要加一，否則 Cloudflare 會繼續送舊圖</small>
-                    </label>
-                    <label class="checkbox">
-                        <input id="pre-freeze" type="checkbox">
-                        封榜前就拿下的一血也要播
-                    </label>
-                </div>
-            </section>
+  <p id="hint" class="notice hint">
+    按上方<strong>選擇 resolver 資料夾</strong>，挑那個含有 <code>contest.json</code> 的資料夾
+    （用 VS Code 連線時，可以先把資料夾同步一份到本機，或直接在該機器上開這個檔案）。
+    瀏覽器只會在本機讀取，不會上傳到任何地方。
+  </p>
 
-            <section id="rules"></section>
+  <section class="panel" id="globals" hidden>
+    <h2>整體設定</h2>
+    <div class="fields">
+      <label>圖片目錄<input id="dir" type="text" spellcheck="false"></label>
+      <label>版本<input id="version" type="number" min="1" step="1">
+        <small>換掉同名圖片後要加一，否則 Cloudflare 會繼續送舊圖</small></label>
+      <label class="checkbox"><input id="prefreeze" type="checkbox">封榜前就拿下的一血也要播</label>
+    </div>
+  </section>
 
-            <button id="add" type="button" class="add">新增規則</button>
+  <section id="rules"></section>
+  <button id="add" type="button" class="add" hidden>新增規則</button>
 
-            <p class="notice">
-                「儲存到伺服器」會直接寫入 <code>slides.json</code>（舊檔備份成
-                <code>slides.json.bak</code>），圖片寫進 <code id="dir-hint">slides/</code>。
-                「下載」則是拿一份檔案自己放。
-            </p>
-        </main>
+  <p id="outro" class="notice" hidden>
+    下載後把 <code>slides.json</code> 拖回 resolver 資料夾覆蓋原檔；新圖片拖進
+    <code id="dirhint">slides/</code>。放好圖片後再按一次「選擇 resolver 資料夾」就能在下拉選單看到它們。
+  </p>
+</main>
 
-        <template id="rule-tpl">
-            <article class="rule">
-                <div class="rule-head">
-                    <span class="rule-no"></span>
-                    <div class="rule-move">
-                        <button type="button" data-act="up" title="往前移">↑</button>
-                        <button type="button" data-act="down" title="往後移">↓</button>
-                        <button type="button" data-act="del" class="del" title="刪除">刪除</button>
-                    </div>
-                </div>
-                <div class="fields">
-                    <label>類型
-                        <select data-f="type">
-                            <option value="rank">名次</option>
-                            <option value="first-to-solve">一血</option>
-                        </select>
-                    </label>
-                    <label data-when="rank">名次
-                        <input type="number" min="1" step="1" data-f="rank">
-                    </label>
-                    <label data-when="first-to-solve">題號
-                        <input type="number" min="1" step="1" data-f="problem">
-                    </label>
-                    <label>圖片
-                        <select data-f="image"></select>
-                    </label>
-                    <label class="grow">文字
-                        <input type="text" data-f="citation" spellcheck="false">
-                    </label>
-                    <label class="upload">換圖
-                        <input type="file" data-f="upload" accept="image/*">
-                    </label>
-                </div>
-                <p class="target"></p>
-                <div class="preview"><div class="slide-overlay">
-                    <img class="slide-image" alt="">
-                    <div class="slide-citation"></div>
-                </div></div>
-            </article>
-        </template>
+<script>
+// hiho-resolver.js 需要的最小相依。它只用到 $.extend 做深拷貝, 以及收尾時的
+// $('#rank-N')(這個頁面沒有那些元素, 回空物件即可)。
+window.$ = function(){ return { find: function(){ return { text: function(){ return ''; } }; } }; };
+$.extend = function(deep, target, src){ return JSON.parse(JSON.stringify(src)); };
+window.sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
 
-        <script src="libs/js/jquery.min.js"></script>
-        <script src="hiho-resolver.js?v=19"></script>
-        <script src="js/admin.js?v=19"></script>
-    </body>
+var IMG = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
+var S = { cfg:null, resolver:null, images:[], imgURL:{} };
+
+function $id(id){ return document.getElementById(id); }
+function fail(msg){ $id('err').textContent = msg; $id('err').hidden = false; }
+
+function readText(file){
+  return new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); };
+    r.onerror = function(){ rej(new Error('讀不到 ' + file.name)); };
+    r.readAsText(file);
+  });
+}
+
+// 選一次資料夾就把需要的東西全部拿到: 設定、賽況、解析邏輯、圖片清單
+function onPick(e){
+  var files = Array.prototype.slice.call(e.target.files || []);
+  if(!files.length) return;
+  $id('err').hidden = true;
+
+  var byPath = {};
+  files.forEach(function(f){
+    var rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/');
+    byPath[rel] = f;
+  });
+
+  var contest = byPath['contest.json'];
+  var resolverJs = byPath['hiho-resolver.js'];
+  if(!contest || !resolverJs){
+    fail('這個資料夾裡找不到 contest.json 或 hiho-resolver.js，請選 resolver 本身的資料夾。');
+    return;
+  }
+
+  // slides/ 底下的圖片: 記下名字, 也留一份 blob URL 給預覽用
+  Object.keys(S.imgURL).forEach(function(k){ URL.revokeObjectURL(S.imgURL[k]); });
+  S.images = []; S.imgURL = {};
+  Object.keys(byPath).forEach(function(rel){
+    var m = rel.match(/^slides\/([^/]+)$/);
+    if(m && IMG.test(m[1])){
+      S.images.push(m[1]);
+      S.imgURL[m[1]] = URL.createObjectURL(byPath[rel]);
+    }
+  });
+  S.images.sort();
+
+  Promise.all([
+    readText(contest),
+    readText(resolverJs),
+    byPath['slides.json'] ? readText(byPath['slides.json']) : Promise.resolve(null)
+  ]).then(function(out){
+    var contestData = JSON.parse(out[0]);
+    (0, eval)(out[1]);                       // 載入真正的 Resolver
+    S.resolver = new Resolver(contestData.solutions, contestData.users,
+                              contestData.problem_count, contestData.frozen_second);
+    S.resolver.calcOperations();
+    S.resolver.buildSettleQueue();
+
+    S.cfg = out[2] ? JSON.parse(out[2])
+                   : { version:1, slides_dir:'slides',
+                       include_first_to_solve_before_freeze:true, rules:[] };
+    if(!Array.isArray(S.cfg.rules)) S.cfg.rules = [];
+
+    $id('dir').value = S.cfg.slides_dir || 'slides';
+    $id('version').value = S.cfg.version || 1;
+    $id('prefreeze').checked = S.cfg.include_first_to_solve_before_freeze !== false;
+    ['globals','add','outro'].forEach(function(i){ $id(i).hidden = false; });
+    $id('hint').hidden = true;
+    $id('download').disabled = false;
+    render();
+  }).catch(function(err){
+    fail('載入失敗: ' + err.message);
+  });
+}
+
+// ---- 解析與畫面 -----------------------------------------------------------
+
+var STATUS = {
+  unmatched:'沒有對應的隊伍 — 這張不會播',
+  'never-settles':'該隊沒有任何翻牌事件, 無處可掛 — 這張不會播',
+  'unknown-type':'類型無效 — 這張不會播',
+  empty:'沒有圖片也沒有文字 — 這張不會播'
+};
+
+// 重建整份清單。只在結構改變時呼叫 -- 編輯欄位時重建會讓輸入框失焦。
+function render(){
+  var host = $id('rules');
+  host.textContent = '';
+  S.cfg.rules.forEach(function(rule, i){
+    host.appendChild(card(rule, i));
+  });
+  refresh();
+}
+
+function card(rule, i){
+  var type = rule.type || 'rank';
+  var el = document.createElement('article');
+  el.className = 'rule';
+  el.dataset.i = i;
+
+  var head = document.createElement('div');
+  head.className = 'rule-head';
+  head.innerHTML = '<span class="rule-no">規則 ' + (i + 1) + '</span>';
+  var mv = document.createElement('div');
+  mv.className = 'rule-move';
+  [['up','↑'],['down','↓'],['del','刪除']].forEach(function(a){
+    var b = document.createElement('button');
+    b.type = 'button'; b.dataset.act = a[0]; b.textContent = a[1];
+    if(a[0] === 'del') b.className = 'del';
+    mv.appendChild(b);
+  });
+  head.appendChild(mv);
+  el.appendChild(head);
+
+  var f = document.createElement('div');
+  f.className = 'fields';
+  f.appendChild(field('類型', sel('type', [['rank','名次'],['first-to-solve','一血']], type)));
+  // 用不到的欄位直接不產生
+  if(type === 'rank') f.appendChild(field('名次', num('rank', rule.rank)));
+  else                f.appendChild(field('題號', num('problem', rule.problem)));
+  f.appendChild(field('圖片', imageSelect(rule.image)));
+  var cit = document.createElement('input');
+  cit.type = 'text'; cit.dataset.f = 'citation'; cit.spellcheck = false;
+  cit.value = rule.citation || '';
+  f.appendChild(field('文字', cit, 'grow'));
+  el.appendChild(f);
+
+  var t = document.createElement('p'); t.className = 'target'; el.appendChild(t);
+  var pv = document.createElement('div'); pv.className = 'preview';
+  pv.innerHTML = '<img hidden alt=""><div class="cap"></div>';
+  el.appendChild(pv);
+  return el;
+}
+
+function field(label, input, cls){
+  var l = document.createElement('label');
+  if(cls) l.className = cls;
+  l.appendChild(document.createTextNode(label));
+  l.appendChild(input);
+  return l;
+}
+function sel(name, opts, cur){
+  var s = document.createElement('select');
+  s.dataset.f = name;
+  opts.forEach(function(o){ s.appendChild(new Option(o[1], o[0])); });
+  s.value = cur;
+  return s;
+}
+function num(name, v){
+  var n = document.createElement('input');
+  n.type = 'number'; n.min = '1'; n.step = '1'; n.dataset.f = name;
+  n.value = v != null ? v : '';
+  return n;
+}
+function imageSelect(cur){
+  var s = document.createElement('select');
+  s.dataset.f = 'image';
+  s.appendChild(new Option('（不用圖片, 只顯示文字）', ''));
+  var known = S.images.slice();
+  if(cur && known.indexOf(cur) === -1) known.push(cur);
+  known.forEach(function(n){
+    s.appendChild(new Option(S.images.indexOf(n) === -1 ? n + '（資料夾裡沒有）' : n, n));
+  });
+  s.value = cur || '';
+  return s;
+}
+
+// 重跑解析, 就地更新落點、預覽與摘要, 不動 DOM 結構
+function refresh(){
+  S.resolver.resolveSlides(S.cfg);
+  var by = {};
+  (S.resolver.rule_outcomes || []).forEach(function(o){ by[o.index] = o; });
+
+  var ok = 0;
+  Array.prototype.forEach.call(document.querySelectorAll('.rule'), function(el, i){
+    var o = by[i];
+    if(o && o.status === 'ok') ok++;
+    showTarget(el.querySelector('.target'), o);
+    showPreview(el.querySelector('.preview'), S.cfg.rules[i]);
+  });
+
+  var n = S.cfg.rules.length;
+  $id('summary').textContent = n + ' 條規則 → ' + ok + ' 張會播出' + (n - ok ? ', ' + (n - ok) + ' 條不會' : '');
+  $id('dirhint').textContent = (S.cfg.slides_dir || 'slides').replace(/\/*$/, '/');
+}
+
+function showTarget(p, o){
+  if(!o){ p.className = 'target'; p.textContent = ''; return; }
+  if(o.status === 'ok'){
+    p.className = 'target ok';
+    p.textContent = '落在 ' + o.user_id + '（最終第 ' + (o.row + 1) + ' 列）';
+  } else if(o.status === 'collision'){
+    p.className = 'target warn';
+    p.textContent = o.user_id + ' 已經被規則 ' + (o.kept_index + 1) + '（' + o.kept +
+      '）用掉了 — 這張不會播。一隊只能一張, 把兩個獎項做成同一張圖。';
+  } else {
+    p.className = 'target warn';
+    p.textContent = STATUS[o.status] || o.status;
+  }
+}
+
+function showPreview(box, rule){
+  if(!rule) return;
+  var img = box.querySelector('img'), cap = box.querySelector('.cap');
+  cap.textContent = rule.citation || '';
+  var url = rule.image && S.imgURL[rule.image];
+  if(url){
+    img.src = url; img.hidden = false;
+  } else {
+    img.hidden = true; img.removeAttribute('src');
+    if(rule.image) cap.textContent = (rule.citation || '') + '（資料夾裡沒有 ' + rule.image + '）';
+  }
+}
+
+// ---- 編輯 -----------------------------------------------------------------
+
+function idxOf(t){ var el = t.closest('.rule'); return el ? Number(el.dataset.i) : -1; }
+
+$id('rules').addEventListener('input', onField);
+$id('rules').addEventListener('change', onField);
+function onField(e){
+  var f = e.target.dataset.f, i = idxOf(e.target);
+  if(!f || i < 0) return;
+  var rule = S.cfg.rules[i];
+  if(f === 'type'){
+    rule.type = e.target.value;
+    if(rule.type === 'rank') delete rule.problem; else delete rule.rank;
+    render();                    // 欄位組成變了, 必須重建
+    return;
+  }
+  if(f === 'rank' || f === 'problem'){
+    var n = parseInt(e.target.value, 10);
+    if(isNaN(n)) delete rule[f]; else rule[f] = n;
+  } else if(f === 'image'){
+    if(e.target.value) rule.image = e.target.value; else delete rule.image;
+  } else if(f === 'citation'){
+    rule.citation = e.target.value;
+  }
+  refresh();
+}
+
+$id('rules').addEventListener('click', function(e){
+  var act = e.target.dataset.act, i = idxOf(e.target);
+  if(!act || i < 0) return;
+  var r = S.cfg.rules;
+  if(act === 'del') r.splice(i, 1);
+  else if(act === 'up' && i > 0) r.splice(i - 1, 0, r.splice(i, 1)[0]);
+  else if(act === 'down' && i < r.length - 1) r.splice(i + 1, 0, r.splice(i, 1)[0]);
+  else return;
+  render();
+});
+
+$id('add').addEventListener('click', function(){
+  S.cfg.rules.push({ type:'rank', rank:1, image:'', citation:'' });
+  render();
+});
+$id('dir').addEventListener('change', function(e){
+  S.cfg.slides_dir = e.target.value.trim() || 'slides'; refresh();
+});
+$id('version').addEventListener('input', function(e){
+  S.cfg.version = parseInt(e.target.value, 10) || 1; refresh();
+});
+$id('prefreeze').addEventListener('change', function(e){
+  S.cfg.include_first_to_solve_before_freeze = e.target.checked; refresh();
+});
+$id('pick').addEventListener('change', onPick);
+$id('download').addEventListener('click', function(){
+  var url = URL.createObjectURL(new Blob([JSON.stringify(S.cfg, null, 2) + '\n'],
+                                         { type:'application/json' }));
+  var a = document.createElement('a');
+  a.href = url; a.download = 'slides.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+});
+</script>
+</body>
 </html>

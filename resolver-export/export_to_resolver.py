@@ -436,7 +436,7 @@ def port_in_use(port):
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def serve_resolver(resolver_dir, port, admin_port):
+def serve_resolver(resolver_dir, port):
     pid_file = os.path.join(resolver_dir, ".resolver_server.pid")
     log_file = os.path.join(resolver_dir, ".resolver_server.log")
 
@@ -459,11 +459,9 @@ def serve_resolver(resolver_dir, port, admin_port):
             f"Pick a different --port."
         )
 
-    server_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resolver_server.py")
     with open(log_file, "ab") as log_fh:
         proc = subprocess.Popen(
-            [PYENV_PY, server_py, resolver_dir,
-             "--port", str(port), "--admin-port", str(admin_port)],
+            [PYENV_PY, "-m", "http.server", str(port)],
             cwd=resolver_dir,
             stdout=log_fh,
             stderr=subprocess.STDOUT,
@@ -474,10 +472,6 @@ def serve_resolver(resolver_dir, port, admin_port):
     logger.info(
         "Started resolver server: http://localhost:%d/index.html (pid=%d, log=%s)",
         port, proc.pid, log_file,
-    )
-    logger.info(
-        "Slide settings (this machine only): http://localhost:%d/admin.html",
-        admin_port,
     )
 
 
@@ -583,8 +577,6 @@ def build_arg_parser():
     parent.add_argument("--resolver-dir", default=DEFAULT_RESOLVER_DIR)
     parent.add_argument("--freeze-minutes-before-end", type=int, default=DEFAULT_FREEZE_MINUTES)
     parent.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parent.add_argument("--admin-port", type=int, default=DEFAULT_PORT + 1,
-                        help="localhost-only port for the slide settings page")
     parent.add_argument("-v", "--verbose", action="store_true")
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -633,7 +625,7 @@ def main(argv=None):
         print(f"contest.json written to: {os.path.join(args.resolver_dir, 'contest.json')}")
 
     elif args.command == "serve":
-        serve_resolver(args.resolver_dir, args.port, args.admin_port)
+        serve_resolver(args.resolver_dir, args.port)
 
     elif args.command == "all":
         backup_dir = do_dump(args.contest_id, args.exports_dir)
@@ -643,7 +635,7 @@ def main(argv=None):
         do_convert(backup_dir, args.resolver_dir, args.freeze_minutes_before_end)
         print(f"contest.json written to: {os.path.join(args.resolver_dir, 'contest.json')}")
         if not args.no_serve:
-            serve_resolver(args.resolver_dir, args.port, args.admin_port)
+            serve_resolver(args.resolver_dir, args.port)
             print(f"Resolver running at: http://localhost:{args.port}/index.html")
         print(
             "Reminder: if the resolver was already open in a browser, click "
