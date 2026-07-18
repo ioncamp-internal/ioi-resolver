@@ -4,7 +4,9 @@ function Resolver(solutions, users, problem_count, frozen_second){
 	this.problem_count = problem_count;
 	this.frozen_seconds = frozen_second;
 	this.operations = [];
-	this.slides_by_op = {};
+	this.slides_by_team = {};   // slides.json 載不到時就維持空的
+	this.settle_by_op = {};
+	this.final_row = {};
 }
 
 // 每題最早的 AC(依真實提交時間), 也就是一血。排除 is_exclude 帳號 --
@@ -45,40 +47,56 @@ Resolver.prototype.settlePoints = function() {
 			if(before[pos[k]] !== k) moved[pos[k]] = j;
 	}
 
-	var settled = {}, final_row = {}, order = [];
+	var settled = {}, final_row = {}, order = [], u;
 	for(k = 0; k < pos.length; k++) { final_row[pos[k]] = k; order.push(pos[k]); }
-	for(var u in own)
-		settled[u] = (moved[u] === undefined) ? own[u] : max(own[u], moved[u]);
+	for(k = 0; k < pos.length; k++) {
+		u = pos[k];
+		// 兩者皆無 = 從頭到尾沒動過也沒翻過牌, 沒有可供停頓的操作
+		if(own[u] === undefined && moved[u] === undefined) continue;
+		if(own[u] === undefined)        settled[u] = moved[u];
+		else if(moved[u] === undefined) settled[u] = own[u];
+		else                            settled[u] = max(own[u], moved[u]);
+	}
 	return { settled: settled, final_row: final_row, order: order };
 };
 
-// 把 slides.json 的規則解析成 { 操作索引: 投影片 }。
-// 錨點是該隊名次定案的那一筆操作(見 settlePoints)。必須在 calcOperations() 之後呼叫。
+// 每筆操作結束後有哪些隊伍的名次就此定案 -- 揭曉會在那裡停下來, 逐一 focus 他們。
+// 一筆操作常同時讓多隊定案(實測 25 隊只有 16 個相異定案點), 所以是陣列;
+// 由下往上排(列索引大的先), 跟揭曉方向一致。
+Resolver.prototype.buildSettleQueue = function() {
+	var pts = this.settlePoints();
+	this.final_row = pts.final_row;
+	this.settle_order = pts.order;
+	this.settle_by_op = {};
+
+	for(var u in pts.settled) {
+		var j = pts.settled[u];
+		if(!this.settle_by_op[j]) this.settle_by_op[j] = [];
+		this.settle_by_op[j].push(u);
+	}
+	var rows = pts.final_row;
+	for(var op in this.settle_by_op)
+		this.settle_by_op[op].sort(function(a, b){ return rows[b] - rows[a]; });
+	return this.settle_by_op;
+};
+
+// 把 slides.json 的規則解析成 { user_id: 投影片 }。
+// 綁在隊伍身上而不是操作上 -- 揭曉本來就會在每隊定案時停下來 focus 他們(見
+// buildSettleQueue), 投影片只是接在那次 focus 之後。同一筆操作讓多隊定案時,
+// 每隊仍各自擁有自己的投影片。必須在 buildSettleQueue() 之後呼叫。
 Resolver.prototype.resolveSlides = function(config) {
-	this.slides_by_op = {};
-	if(!config) return this.slides_by_op;
+	this.slides_by_team = {};
+	if(!config) return this.slides_by_team;
 	if(!Array.isArray(config.rules)) {
 		if(config.rules) console.warn('slides: "rules" must be an array, ignoring config');
-		return this.slides_by_op;
+		return this.slides_by_team;
 	}
 
-	var pts = this.settlePoints();
-	var settled = pts.settled, order = pts.order;
-
-	function anchorFor(user_id) {
-		if(settled[user_id] !== undefined) return settled[user_id];
-		// 該隊完全沒有封榜提交 -> 沒有自己的翻牌事件。
-		// 退而求其次掛在名次緊鄰其下、且有事件的隊伍, 等於揭曉經過他們時播放。
-		for(var j = order.indexOf(user_id) + 1; j < order.length; j++)
-			if(settled[order[j]] !== undefined) return settled[order[j]];
-		return -1;
-	}
-
-	var fts = this.firstToSolve();
+	var i, fts = this.firstToSolve();
 	var version = config.version || 1;
 	var dir = (config.slides_dir || 'slides').replace(/\/+$/, '');
 	var allow_pre_freeze = config.include_first_to_solve_before_freeze !== false;
-	var collisions = [];   // 撞點被捨棄的規則, 最後統一報告
+	var collisions = [];   // 同一隊被多條規則指到, 只能留一張
 
 	for(var r = 0; r < config.rules.length; r++) {
 		var rule = config.rules[r], user_id = null, why;
@@ -102,44 +120,50 @@ Resolver.prototype.resolveSlides = function(config) {
 		}
 
 		if(!user_id) { console.warn('slides: no team matched ' + why + ', skipped'); continue; }
-		var op = anchorFor(user_id);
-		if(op < 0) { console.warn('slides: no operation to anchor ' + why + ' to, skipped'); continue; }
-		if(this.slides_by_op[op]) {
-			collisions.push({ op: op, kept: this.slides_by_op[op].why, dropped: why, team: user_id });
+		if(this.final_row[user_id] === undefined) {
+			console.warn('slides: ' + user_id + ' never settles, cannot show ' + why);
 			continue;
 		}
-		this.slides_by_op[op] = {
+		if(this.slides_by_team[user_id]) {
+			collisions.push({ kept: this.slides_by_team[user_id].why, dropped: why, team: user_id });
+			continue;
+		}
+		this.slides_by_team[user_id] = {
 			image_url: rule.image ? (dir + '/' + rule.image + '?v=' + version) : '',
 			citation: rule.citation || '',
 			why: why,
 			user_id: user_id,
-			row: pts.final_row[user_id]   // 切投影片前要把這一列捲回視野
+			row: this.final_row[user_id]   // focus 時要捲到的那一列
 		};
 	}
 
 	this.reportSlides(collisions);
-	return this.slides_by_op;
+	return this.slides_by_team;
 };
 
-// 載入時把結果印出來。撞點的規則會被捨棄(一個定案點只播一張), 這份報告就是
-// 用來告訴你「哪幾個獎項該合併成同一張圖」-- 一次操作常同時讓多隊定案,
-// 實測 25 隊只有 16 個相異定案點, 所以撞點是常態而非例外。
+// 載入時把排程印出來: 每隊定案於哪一筆操作、有沒有投影片。
+// 一隊只能有一張投影片, 所以被同一隊的多條規則指到時會捨棄後者。
 Resolver.prototype.reportSlides = function(collisions) {
-	var ops = Object.keys(this.slides_by_op).map(Number).sort(function(a,b){ return a-b; });
-	console.log('slides: ' + ops.length + ' slide(s) scheduled across ' +
-	            this.operations.length + ' operations');
-	for(var i = 0; i < ops.length; i++) {
-		var s = this.slides_by_op[ops[i]];
-		console.log('  op ' + ops[i] + '  row ' + s.row + '  ' + s.why + '  (' + s.user_id + ')');
+	var ops = Object.keys(this.settle_by_op).map(Number).sort(function(a,b){ return a-b; });
+	var n = 0, i, k;
+	for(i = 0; i < ops.length; i++) n += this.settle_by_op[ops[i]].length;
+	console.log('slides: ' + n + ' team(s) settle across ' + ops.length +
+	            ' stop(s) in ' + this.operations.length + ' operations');
+	for(i = 0; i < ops.length; i++) {
+		var teams = this.settle_by_op[ops[i]];
+		for(k = 0; k < teams.length; k++) {
+			var s = this.slides_by_team[teams[k]];
+			console.log('  op ' + ops[i] + '  row ' + this.final_row[teams[k]] + '  ' +
+			            teams[k] + (s ? '  -> ' + s.why : ''));
+		}
 	}
 	if(!collisions || !collisions.length) return;
-	console.warn('slides: ' + collisions.length + ' rule(s) dropped -- these teams settle at the ' +
-	             'same operation as an earlier rule. Put the awards on one image and delete the ' +
-	             'losing rule, or reorder "rules" to change which one wins:');
+	console.warn('slides: ' + collisions.length + ' rule(s) dropped -- a team can only show one ' +
+	             'slide. Put the awards on one image and delete the losing rule, or reorder ' +
+	             '"rules" to change which one wins:');
 	for(i = 0; i < collisions.length; i++) {
 		var c = collisions[i];
-		console.warn('  op ' + c.op + '  kept "' + c.kept + '"  dropped "' + c.dropped +
-		             '"  (' + c.team + ')');
+		console.warn('  ' + c.team + '  kept "' + c.kept + '"  dropped "' + c.dropped + '"');
 	}
 };
 

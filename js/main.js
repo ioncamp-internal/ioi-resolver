@@ -50,33 +50,45 @@ function vuejs() {
 
     var slide_shown_at = 0;
     var SLIDE_MIN_MS = 300;    // 投影片剛跳出的這段時間內忽略按鍵, 避免連按秒關
-    var SLIDE_SETTLE_MS = 900; // 該隊歸位後停這麼久再切投影片, 讓觀眾看清楚人在哪
 
-    // 升幅超過一個螢幕高時, 飛行動畫是刻意讓該列飛出畫面上緣, 再靠重繪歸位
-    // (見下方 distance 的處理)。所以切投影片前必須先確認該隊真的在觀眾視野裡,
-    // 否則會變成「人飛不見了, 然後跳出頒獎畫面」。
-    function showSlideWhenSettled(slide) {
-        var el_row = $('#rank-' + slide.row);
-        // 該隊的最後一次 focus: highlight 暫時從下一隊借過來, 停一拍讓觀眾看清楚
-        // 是誰、在第幾名, 然後才切投影片。
+    // 名次定案的停頓: 每筆操作結束後, 這一批定案的隊伍會被逐一 focus。
+    // 每隊都停, 不是只有拿獎的才停。按鍵前進 -- 有投影片就先出投影片, 再按才換下一隊。
+    var settle_queue = [];
+    var settle_idx = -1;
+
+    function inSettleQueue() { return settle_idx >= 0; }
+
+    function focusSettledTeam(user_id) {
+        // 升幅超過一個螢幕高時, 飛行動畫是刻意讓該列飛出畫面上緣再靠重繪歸位
+        // (見下方 distance 的處理), 所以這裡務必把它捲回視野正中央。
+        var el_row = $('#rank-' + resolver.final_row[user_id]);
         $('.selected').removeClass('selected');
         el_row.addClass('selected');
         if(el_row.length) focusElement(el_row[0]);
-        setTimeout(function(){
-            vm.$data.slide_failed = false;
-            vm.$data.slide = slide;
-            slide_shown_at = Date.now();
-        }, SLIDE_SETTLE_MS);
     }
 
-    // 投影片期間 highlight 借給了得獎隊伍, 收掉後還給下一個要翻的隊伍
-    function restoreSelection() {
+    // 移到這一批的下一隊; 整批處理完就把 highlight 還給下一個要翻的隊伍並放行
+    function advanceSettleQueue() {
+        settle_idx++;
+        if(settle_idx < settle_queue.length) {
+            focusSettledTeam(settle_queue[settle_idx]);
+            return;
+        }
+        settle_queue = [];
+        settle_idx = -1;
         $('.selected').removeClass('selected');
         if(vm.$data.op_flag < vm.$data.operations.length) {
             var op = vm.$data.operations[vm.$data.op_flag];
             $('#rank-' + op.old_rank).addClass('selected');
+            centerSelected();
         }
-        centerSelected();
+        vm.$data.op_status = true;
+    }
+
+    function showSlide(slide) {
+        vm.$data.slide_failed = false;
+        vm.$data.slide = slide;
+        slide_shown_at = Date.now();
     }
 
     // 兩條收尾路徑(原地不動 / 飛上去)共用的交棒動作。
@@ -91,11 +103,12 @@ function vuejs() {
         el_old.find('.p-' + problem_index).removeClass('uncover');
         vm.$data.op_flag += 1;
 
-        var slide = resolver.slides_by_op[op_index];
-        if(slide) {
-            // op_status 保持 false: 從這裡到投影片關閉為止都不接受推進,
-            // 包含中間等待歸位的那段空檔
-            showSlideWhenSettled(slide);
+        var settling = resolver.settle_by_op[op_index];
+        if(settling && settling.length) {
+            // op_status 保持 false: 整批 focus 走完之前都不接受推進揭曉
+            settle_queue = settling;
+            settle_idx = -1;
+            advanceSettleQueue();
         } else {
             centerSelected();   // 下一隊先就定位, 按鍵時直接開翻
             vm.$data.op_status = true;
@@ -103,13 +116,19 @@ function vuejs() {
     }
 
     window.Operation = {
-        // 關掉目前的投影片並放行揭曉。太快按會被忽略, 回傳是否真的關掉了。
-        dismissSlide: function() {
-            if(Date.now() - slide_shown_at < SLIDE_MIN_MS) return false;
-            vm.$data.slide = null;
-            restoreSelection();
-            vm.$data.op_status = true;
-            return true;
+        inSettleQueue: inSettleQueue,
+
+        // 名次定案停頓中的按鍵: 先出投影片, 再按才換下一隊。太快按會被忽略。
+        settleStep: function() {
+            if(vm.$data.slide) {
+                if(Date.now() - slide_shown_at < SLIDE_MIN_MS) return;
+                vm.$data.slide = null;
+                advanceSettleQueue();
+                return;
+            }
+            var slide = resolver.slides_by_team[settle_queue[settle_idx]];
+            if(slide) showSlide(slide);
+            else advanceSettleQueue();
         },
 
         next: async function() {
@@ -382,6 +401,7 @@ $.getJSON("contest.json", function(data){
     var resolver = new Resolver(data.solutions, data.users, data.problem_count, data.frozen_second);
     window.resolver = resolver;
     resolver.calcOperations();
+    resolver.buildSettleQueue();   // 定案停頓與投影片無關, 沒有 slides.json 也要有
 
     // slides.json 是選配: 載不到或壞掉就照常揭曉, 只是不播投影片
     $.getJSON("slides.json")
@@ -397,11 +417,11 @@ $.getJSON("contest.json", function(data){
             if(!e) return;
             var advance = (e.keyCode == 39 || e.keyCode == 32); // 右鍵 / 空白鍵
 
-            // 投影片顯示中: 這一下只負責關掉它, 不推進揭曉
-            if(vm.$data.slide){
+            // 名次定案的停頓中(含投影片顯示中): 按鍵只在這個停頓內前進, 不推進揭曉
+            if(Operation.inSettleQueue()){
                 if(advance){
                     e.preventDefault();  // 空白鍵預設會捲動頁面
-                    Operation.dismissSlide();
+                    Operation.settleStep();
                 }
                 return;
             }
