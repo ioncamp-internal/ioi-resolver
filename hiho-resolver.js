@@ -49,13 +49,29 @@ Resolver.prototype.settlePoints = function() {
 
 	var settled = {}, final_row = {}, order = [], u;
 	for(k = 0; k < pos.length; k++) { final_row[pos[k]] = k; order.push(pos[k]); }
-	for(k = 0; k < pos.length; k++) {
+
+	// 兩者皆無 = 封榜後沒有提交、也從頭到尾沒被擠動過, 身上沒有任何一筆 operation。
+	// 這種隊伍的名次一開始就是最終名次, 但它仍然要被 focus -- 借用「下面所有隊伍都
+	// 已定案」的那一筆操作, 由下往上掃並沿路記住目前的最大定案點即可(pending 是
+	// 榜尾整段都沒有 operation 的情況, 沒有下面的停頓點可借, 統一掛到第一個停頓點)。
+	var running = -1, pending = [];
+	for(k = pos.length - 1; k >= 0; k--) {
 		u = pos[k];
-		// 兩者皆無 = 從頭到尾沒動過也沒翻過牌, 沒有可供停頓的操作
-		if(own[u] === undefined && moved[u] === undefined) continue;
+		if(own[u] === undefined && moved[u] === undefined) {
+			if(running >= 0) settled[u] = running;
+			else             pending.push(u);
+			continue;
+		}
 		if(own[u] === undefined)        settled[u] = moved[u];
 		else if(moved[u] === undefined) settled[u] = own[u];
 		else                            settled[u] = max(own[u], moved[u]);
+		if(settled[u] > running) running = settled[u];
+	}
+	if(pending.length) {
+		var first = -1;
+		for(u in settled) if(first < 0 || settled[u] < first) first = settled[u];
+		// first < 0 = 完全沒有 operation, 揭曉不會有任何停頓點可掛
+		if(first >= 0) for(k = 0; k < pending.length; k++) settled[pending[k]] = first;
 	}
 	return { settled: settled, final_row: final_row, order: order };
 };

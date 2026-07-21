@@ -48,6 +48,12 @@ Legacy Vue 1.x + jQuery app with no build step. Edit `index.html`, `js/main.js`,
   overtaken by a team resolved later, so its rank is *not* final when its own last flip
   ends. Use `Resolver.settlePoints()` / `buildSettleQueue()` to know a team is done;
   `op.new_rank` is its position at that moment, not its final one.
+- **Every team gets a settle stop, including ones with no operation of their own.** A team
+  with zero post-freeze submissions that also never gets displaced owns no `op`, so it has
+  nothing to key a stop on; `settlePoints()` borrows the last settle op of the teams below
+  it (and the first stop overall for an untouched bottom block). Without that they were
+  silently never focused — 5 of 25 teams on the real contest. Regression test:
+  `node test_settle_queue.js`.
 - When a team rises further than one screen height, `distance` is clamped so the row
   deliberately flies off the top and the re-render puts it back. Anything that reacts to a
   team arriving must scroll that row into view first, or it fires at an empty screen.
