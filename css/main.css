@@ -22,10 +22,43 @@
 }
 
 /*
-    reset bootstrap
+    置頂標題列。和榜單是同一張紙: 白列面 + 相同的 28px 左內距,
+    標題就落在名次欄的起點上, 不像 bootstrap 的 container 自己縮排。
+    下緣的部分分色階漸層是全站唯一重複出現的識別 (同 .slide-card::before),
+    它同時當分隔線用, 所以這裡不再另外畫髮絲線。
  */
-.navbar {
-    margin-bottom: 0;
+.topbar {
+    position: sticky;
+    top: 0;
+    /* 夾在 .selected(5) 與 .slide-overlay(1000) 之間:
+       飛行中的列從底下穿過去, 頒獎投影片照樣蓋掉它 */
+    z-index: 100;
+    background: var(--row);
+    padding: 15px 28px;
+    /* 置頂列和榜單同為白色, 捲動時列會從它底下穿過去。
+       這道很淡的投影是唯一讓切口讀起來像「被蓋住」而不是「被裁掉」的訊號,
+       和 .slide-card 一樣: 離開紙面的東西才有影子。 */
+    box-shadow: 0 6px 14px rgba(31, 41, 51, .09);
+}
+.topbar::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: linear-gradient(90deg,
+        #E8635F, #E8845D, #E89A5C, #E1BF5C, #DFC85C,
+        #C1C65C, #A2C05C, #8BBB5C, #7FB85C);
+}
+.topbar-title {
+    font-family: var(--cjk), var(--num);
+    /* 要比隊名的 24px 大一階 (它是頁面的名字), 又不能追上名次的 34px */
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: .01em;
+    color: var(--ink);
 }
 
 body {
