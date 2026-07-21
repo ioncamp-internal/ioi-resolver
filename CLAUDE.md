@@ -44,16 +44,23 @@ Legacy Vue 1.x + jQuery app with no build step. Edit `index.html`, `js/main.js`,
 
 ## Reveal internals
 
-- **The reveal does not strictly converge bottom-up.** A team can rise and then be
-  overtaken by a team resolved later, so its rank is *not* final when its own last flip
-  ends. Use `Resolver.settlePoints()` / `buildSettleQueue()` to know a team is done;
-  `op.new_rank` is its position at that moment, not its final one.
-- **Every team gets a settle stop, including ones with no operation of their own.** A team
-  with zero post-freeze submissions that also never gets displaced owns no `op`, so it has
-  nothing to key a stop on; `settlePoints()` borrows the last settle op of the teams below
-  it (and the first stop overall for an untouched bottom block). Without that they were
-  silently never focused — 5 of 25 teams on the real contest. Regression test:
-  `node test_settle_queue.js`.
+- **The rank movement does not converge bottom-up.** A team can rise and then be overtaken
+  by a team resolved later, so its rank is *not* final when its own last flip ends. Use
+  `Resolver.settlePoints()` / `buildSettleQueue()` to know a team is done; `op.new_rank` is
+  its position at that moment, not its final one.
+- **The settle stops, by contrast, are strictly bottom-up and every team gets exactly one.**
+  `settlePoints()` scans rows bottom-up carrying a running max, so a team's stop is
+  `max(its own last flip/displacement, every stop below it)`. That single rule covers two
+  things that each broke the show:
+  - a team with no post-freeze submissions that also never gets displaced owns no `op`, so
+    it has nothing to key a stop on and was silently never focused (5 of 25 teams on the
+    real contest). It now inherits the stop from below; an untouched *bottom* block falls
+    back to the first stop overall.
+  - a team can stop moving while the teams below it are still swapping. Confirming it then
+    made the focus skip rows and fold back down.
+
+  Don't "optimise" this back to each team's own last op. Regression test:
+  `node test_settle_queue.js` (synthetic data, so it runs without `contest.json`).
 - When a team rises further than one screen height, `distance` is clamped so the row
   deliberately flies off the top and the re-render puts it back. Anything that reacts to a
   team arriving must scroll that row into view first, or it fires at an empty screen.

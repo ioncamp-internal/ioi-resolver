@@ -100,4 +100,26 @@ function everyTeamStops(r, label) {
 		'案例 3: 四列都要出現且不重複');
 }
 
-console.log('ok  test_settle_queue.js: 3 cases passed');
+// --- 案例 4: 一支隊伍自己不動了, 但下面的隊伍還在互相超車 ---
+// E 第一筆就衝到列 1 之後再也沒動過, 而列 2/3/4 一直換到最後一筆操作。
+// 「自己不再移動」不等於可以確認名次 -- 要等下面每一隊都定案, 確認才不會回頭。
+{
+	const r = build([
+		{ user_id: 'A', problem_index: 1, verdict: 'AC',  submitted_seconds: 10 },
+		{ user_id: 'B', problem_index: 1, verdict: 'P50', submitted_seconds: 20 },
+		{ user_id: 'C', problem_index: 1, verdict: 'P40', submitted_seconds: 30 },
+		{ user_id: 'D', problem_index: 1, verdict: 'P30', submitted_seconds: 40 },
+		{ user_id: 'E', problem_index: 1, verdict: 'AC',  submitted_seconds: 150 },
+		{ user_id: 'D', problem_index: 2, verdict: 'P35', submitted_seconds: 160 },
+		{ user_id: 'C', problem_index: 2, verdict: 'P45', submitted_seconds: 170 },
+	]);
+	assert.deepStrictEqual(
+		r.rank2.map(e => e.user_id), ['A', 'E', 'C', 'D', 'B'],
+		'案例 4 前提: E 衝到列 1, C/D/B 在下面重排');
+	assert.strictEqual(r.operations[0].user_id, 'E', '案例 4 前提: E 是第一筆操作');
+	everyTeamStops(r, '案例 4');
+	assert.deepStrictEqual(focusOrder(r), [4, 3, 2, 1, 0],
+		'案例 4: E(列 1)不能在列 2/3/4 定案之前就被確認');
+}
+
+console.log('ok  test_settle_queue.js: 4 cases passed');

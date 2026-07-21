@@ -50,22 +50,25 @@ Resolver.prototype.settlePoints = function() {
 	var settled = {}, final_row = {}, order = [], u;
 	for(k = 0; k < pos.length; k++) { final_row[pos[k]] = k; order.push(pos[k]); }
 
-	// 兩者皆無 = 封榜後沒有提交、也從頭到尾沒被擠動過, 身上沒有任何一筆 operation。
-	// 這種隊伍的名次一開始就是最終名次, 但它仍然要被 focus -- 借用「下面所有隊伍都
-	// 已定案」的那一筆操作, 由下往上掃並沿路記住目前的最大定案點即可(pending 是
-	// 榜尾整段都沒有 operation 的情況, 沒有下面的停頓點可借, 統一掛到第一個停頓點)。
-	var running = -1, pending = [];
+	// 確認一定由下往上, 不回頭: 一隊的定案點 = max(自己最後一次翻牌 / 被移動,
+	// 下面每一隊的定案點)。只看自己是不夠的 -- 一隊可能很早就不再移動, 而它下面的
+	// 隊伍還在互相超車, 那時候確認它, 焦點就會跳過下面幾列再折回去。
+	//
+	// 由下往上掃、沿路帶一個 running max 就同時解決兩件事:
+	// 1. 封榜後沒有提交又從頭到尾沒被擠動過的隊伍, 身上一筆 operation 也沒有,
+	//    直接沿用下面的定案點(否則它永遠不會被 focus)。
+	// 2. 上面那個「自己不動了但下面還在動」的回頭問題。
+	// pending = 榜尾整段都沒有 operation, 下面沒有停頓點可用, 統一掛到第一個停頓點。
+	var running = -1, pending = [], s;
 	for(k = pos.length - 1; k >= 0; k--) {
 		u = pos[k];
-		if(own[u] === undefined && moved[u] === undefined) {
-			if(running >= 0) settled[u] = running;
-			else             pending.push(u);
-			continue;
-		}
-		if(own[u] === undefined)        settled[u] = moved[u];
-		else if(moved[u] === undefined) settled[u] = own[u];
-		else                            settled[u] = max(own[u], moved[u]);
-		if(settled[u] > running) running = settled[u];
+		if(own[u] === undefined && moved[u] === undefined) s = -1;
+		else if(own[u] === undefined)                      s = moved[u];
+		else if(moved[u] === undefined)                    s = own[u];
+		else                                               s = max(own[u], moved[u]);
+		if(s > running) running = s;
+		if(running >= 0) settled[u] = running;
+		else             pending.push(u);
 	}
 	if(pending.length) {
 		var first = -1;
