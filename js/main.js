@@ -67,6 +67,24 @@ function vuejs() {
     var settle_queue = [];
     var settle_idx = -1;
 
+    // 頒獎隊伍的呈現順序(依定案 op、批內索引), 以及「目前顯示/最後顯示到第幾張」的指標,
+    // 供左鍵倒回上一張投影片。award_sequence 第一次用到時才建, 建好後快取。
+    var award_sequence = null;
+    var award_shown_idx = -1;
+
+    function getAwardSequence() {
+        if(award_sequence) return award_sequence;
+        award_sequence = [];
+        var ops = Object.keys(resolver.settle_by_op).map(Number).sort(function(a, b){ return a - b; });
+        for(var oi = 0; oi < ops.length; oi++) {
+            var K = ops[oi], batch = resolver.settle_by_op[K];
+            for(var bi = 0; bi < batch.length; bi++)
+                if(resolver.slides_by_team[batch[bi]])
+                    award_sequence.push({ user_id: batch[bi], settle_op: K, batch_idx: bi });
+        }
+        return award_sequence;
+    }
+
     function inSettleQueue() { return settle_idx >= 0; }
 
     function focusSettledTeam(user_id) {
@@ -100,6 +118,28 @@ function vuejs() {
         vm.$data.slide_failed = false;
         vm.$data.slide = slide;
         slide_shown_at = Date.now();
+        // 記住現在顯示到哪一張獎, 左鍵才知道「上一張」是誰
+        var seq = getAwardSequence();
+        for(var i = 0; i < seq.length; i++)
+            if(seq[i].user_id === slide.user_id) { award_shown_idx = i; break; }
+    }
+
+    // 純資料重播到某個頒獎隊的定案狀態, 並直接顯示它的卡片。左鍵倒回用 --
+    // 對稱於 jumpToNextSlide, 但從 rank_frozen 重放到目標 op(可回到更早的狀態)。
+    function rebuildToAward(item) {
+        var ranks = JSON.parse(JSON.stringify(resolver.rank_frozen));
+        for(var f = 0; f <= item.settle_op; f++) applyOpData(ranks, resolver.operations[f]);
+        for(var j = 0; j < ranks.length; j++)
+            if(ranks[j].rank_show !== '*') ranks[j].rank_show = j + 1;
+        vm.$set('ranks', ranks);
+        vm.$data.op_flag = item.settle_op + 1;
+        settle_queue = resolver.settle_by_op[item.settle_op];
+        settle_idx = item.batch_idx;
+        vm.$data.op_status = false;
+        Vue.nextTick(function(){
+            focusSettledTeam(item.user_id);
+            showSlide(resolver.slides_by_team[item.user_id]);   // 直接把卡片顯示出來
+        });
     }
 
     // 兩條收尾路徑(原地不動 / 飛上去)共用的交棒動作。
@@ -179,6 +219,17 @@ function vuejs() {
             settle_idx = target_idx;
             vm.$data.op_status = false;
             Vue.nextTick(function(){ setRank(); focusSettledTeam(target); });
+        },
+
+        // 左鍵: 倒回上一張投影片。若目前正顯示某張卡片 -> 回到「前一張」(award_shown_idx-1);
+        // 若卡片已收起 -> 重新顯示「最後看過的那張」(award_shown_idx)。都靠 rebuildToAward
+        // 從 rank_frozen 重放到目標狀態並直接出圖。
+        jumpToPrevSlide: function() {
+            var seq = getAwardSequence();
+            if(award_shown_idx < 0) { console.log('jump: no slide shown yet'); return; }
+            var target = vm.$data.slide ? award_shown_idx - 1 : award_shown_idx;
+            if(target < 0) { console.log('jump: already at the first slide'); return; }
+            rebuildToAward(seq[target]);
         },
 
         next: async function() {
@@ -494,6 +545,14 @@ $.getJSON("contest.json", function(data){
             var e = event || window.event || arguments.callee.caller.arguments[0];
             if(!e) return;
             var advance = (e.keyCode == 39 || e.keyCode == 32); // 右鍵 / 空白鍵
+
+            // 左鍵: 倒回上一張投影片(卡片顯示中 -> 前一張; 已收起 -> 重新顯示最後看過的那張)。
+            // 動畫進行中(op_status false 且不在定案停頓)不處理, 避免與飛行 callback 衝突。
+            if(e.keyCode == 37 && (vm.$data.op_status || Operation.inSettleQueue())){
+                e.preventDefault();
+                Operation.jumpToPrevSlide();
+                return;
+            }
 
             // 名次定案的停頓中(含投影片顯示中): 按鍵只在這個停頓內前進, 不推進揭曉
             if(Operation.inSettleQueue()){
