@@ -321,10 +321,11 @@ body {
     padding: 12px;
     box-sizing: border-box;
 }
-/* 照片吃滿卡片可用空間, 置中等比縮放 -> 幾乎滿版 */
+/* 照片置中等比縮放。高度用 vh 而不是 100%: .slide-photo 是高度不確定的 flex item,
+   對它取百分比等於沒有上限, 圖片會撐滿整張卡再溢出去蓋掉下面那排字。 */
 .slide-photo img {
     max-width: 100%;
-    max-height: 100%;
+    max-height: 74vh;
     object-fit: contain;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -347,15 +348,17 @@ body {
     border-top: 1px solid var(--line);
     font-family: var(--cjk), var(--num);
 }
+/* 字級跟著畫面縮放。寫死 40/44px 時, 最長的隊名加最長的獎項在 1280 寬的投影機上
+   反過來把卡片撐到接近滿版, 照片變成配角 -- 讓文字先縮, 卡片才由照片決定大小。 */
 .slide-team {
     color: var(--ink);
-    font-size: 40px;
+    font-size: clamp(20px, 1.9vw, 40px);
     font-weight: 600;
     line-height: 1.2;
 }
 .slide-award {
     color: var(--ink-soft);
-    font-size: 44px;
+    font-size: clamp(22px, 2.1vw, 44px);
     font-weight: 700;
     white-space: nowrap;
 }
