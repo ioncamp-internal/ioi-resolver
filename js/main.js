@@ -532,14 +532,18 @@ function vuejs() {
     });
 }
 
-$.getJSON("contest.json", function(data){
+// contest.json / slides.json 一定要繞過瀏覽器快取。它們不像 js/css 有 ?v= 版本戳,
+// 而 origin 的 python http.server 不送 Cache-Control -- 瀏覽器就改用 Last-Modified
+// 做啟發式快取(檔案愈舊、當成新鮮的時間愈長), 換過的 slides.json 現場照樣拿到舊的。
+// cache:false 讓 jQuery 附上 _=timestamp, 每次都真的回頭問伺服器。
+$.ajax({ url: "contest.json", dataType: "json", cache: false }).done(function(data){
     var resolver = new Resolver(data.solutions, data.users, data.problem_count, data.frozen_second);
     window.resolver = resolver;
     resolver.calcOperations();
     resolver.buildSettleQueue();   // 定案停頓與投影片無關, 沒有 slides.json 也要有
 
     // slides.json 是選配: 載不到或壞掉就照常揭曉, 只是不播投影片
-    $.getJSON("slides.json")
+    $.ajax({ url: "slides.json", dataType: "json", cache: false })
         .done(function(cfg){ resolver.resolveSlides(cfg); })
         .fail(function(){ console.warn('slides: slides.json unavailable, running without slides'); })
         .always(start);
