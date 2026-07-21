@@ -12,6 +12,15 @@ Legacy Vue 1.x + jQuery app with no build step. Edit `index.html`, `js/main.js`,
   origin; also compare md5 with the local file:
   `curl -sS -D - -o /tmp/x.js "https://judge.ioncamp.org/resolver/js/main.js?v=N" | grep -i cf-cache-status`
 - Replacing a slide image needs `slides.json`'s `version` bumped, for the same reason.
+- "HTML and JSON pass through uncached" is true of **Cloudflare only**. The origin is a plain
+  `python -m http.server`, which sends no `Cache-Control`, so the *browser* falls back to
+  heuristic freshness off `Last-Modified` — a days-old file stays "fresh" for hours. That is
+  why `contest.json` and `slides.json` are fetched with `$.ajax({cache: false})` (jQuery
+  appends `_=timestamp`) and not `$.getJSON`. Don't tidy that back; it is what makes a
+  re-exported `contest.json` or an edited `slides.json` reach the screen at all.
+- `index.html` itself is subject to that same heuristic cache, and it is what carries the
+  `?v=` stamps — so after a bump the first load still needs one hard-refresh
+  (`Ctrl+Shift+R`) before the new `js/css` is even requested.
 
 ## Data
 
