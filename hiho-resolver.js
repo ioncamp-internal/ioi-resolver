@@ -209,6 +209,24 @@ Resolver.prototype.status = function(problem) {
 function max(a, b) {
     return a > b ? a : b;
 }
+// 一筆 verdict 的分數: AC=100, P{n}=n, 其它(CE/WT/...)=0
+function pts(verdict) {
+    if(verdict === 'AC') return 100;
+    if(verdict && verdict[0] === 'P') return parseInt(verdict.substring(1)) || 0;
+    return 0;
+}
+// 排名比較 (分數 -> AC 滿分題數 -> 達到目前總分的時間)。
+// cmp 供 Array.sort(負值 a 在前); better(a,b) 判斷 a 是否「嚴格」在 b 之上(完全相等回 false)。
+function cmpRank(a, b) {
+    if(a.score !== b.score)       return b.score - a.score;       // 分數高在前
+    if(a.ac_count !== b.ac_count) return b.ac_count - a.ac_count; // AC 題數多在前
+    return a.reach_time - b.reach_time;                           // 早達到總分在前
+}
+function betterRank(a, b) {
+    if(a.score !== b.score)       return a.score > b.score;
+    if(a.ac_count !== b.ac_count) return a.ac_count > b.ac_count;
+    return a.reach_time < b.reach_time;
+}
 Resolver.prototype.calcOperations = async function() {
 	this.rank = {};
 	for(var solution_id in this.solutions) {
@@ -287,15 +305,43 @@ Resolver.prototype.calcOperations = async function() {
             }
         }
 	}
+	// tie-break 用: 每 (隊,題) 達到「最佳分」的最早提交時間。finalAchieve 看全部提交,
+	// frozen* 只看封榜前(供凍結初值); frozenHasAC = 封榜前是否已 AC(算 AC 題數)。
+	this.finalAchieve = {};
+	var frozenAchieve = {}, frozenBest = {}, finalBest = {}, frozenHasAC = {};
+	for(var sid in this.solutions) {
+		var s = this.solutions[sid];
+		var su = s.user_id, sp = s.problem_index, st = s.submitted_seconds, sv = pts(s.verdict);
+		if(sv <= 0) continue;   // 沒得分的提交不影響達成分與時間
+		if(!this.finalAchieve[su]) {
+			this.finalAchieve[su] = {}; frozenAchieve[su] = {};
+			frozenBest[su] = {}; finalBest[su] = {}; frozenHasAC[su] = {};
+		}
+		if(finalBest[su][sp] === undefined || sv > finalBest[su][sp]) { finalBest[su][sp] = sv; this.finalAchieve[su][sp] = st; }
+		else if(sv === finalBest[su][sp] && st < this.finalAchieve[su][sp]) this.finalAchieve[su][sp] = st;
+		if(st <= this.frozen_seconds) {
+			if(frozenBest[su][sp] === undefined || sv > frozenBest[su][sp]) { frozenBest[su][sp] = sv; frozenAchieve[su][sp] = st; }
+			else if(sv === frozenBest[su][sp] && st < frozenAchieve[su][sp]) frozenAchieve[su][sp] = st;
+			if(s.verdict === 'AC') frozenHasAC[su][sp] = true;
+		}
+	}
+	// 每隊凍結初值: ac_count = 封榜前 AC 題數; reach_time = 各題 frozenAchieve 的最大值
+	for(var uid in this.rank) {
+		var e = this.rank[uid], ac = 0, rt = 0;
+		var fa = frozenAchieve[uid] || {}, fac = frozenHasAC[uid] || {};
+		for(var fp in fa) if(fa[fp] > rt) rt = fa[fp];
+		for(var cp in fac) if(fac[cp]) ac++;
+		e.ac_count = ac;
+		e.reach_time = rt;
+	}
+
 	var uids = Object.keys(this.rank);
 	this.rank2 = [];
 	for(var key in uids) {
 		var user_id = uids[key];
 		this.rank2.push(this.rank[user_id]);
 	}
-	this.rank2.sort(function(a, b){
-		return b.score - a.score;
-	});
+	this.rank2.sort(cmpRank);
 	var rnk = 0;
 	for (var i = 0; i < this.rank2.length; ++i) {
 		var user_id = this.rank2[i].user_id;
@@ -356,8 +402,11 @@ Resolver.prototype.calcOperations = async function() {
                     }
 					tmp.problem[j].old_verdict = ver;
 					tmp.problem[j].new_verdict = "NA";
+					// tie-break 量同步更新: 翻成 AC 則 AC 題數 +1; 達到總分時間取到 j 題的最新達成時間
+					if(ver === 'AC') tmp.ac_count++;
+					tmp.reach_time = max(tmp.reach_time, (this.finalAchieve[tmp.user_id] || {})[j] || 0);
 					var k = i -1;
-					while(k >= 0 && this.rank2[k].score < tmp.score) {
+					while(k >= 0 && betterRank(tmp, this.rank2[k])) {
 						if (tmp.rank_show !== "*" && this.rank2[k].rank_show !== "*") {
 							tmp.rank_show--;
 							this.rank2[k].rank_show++;
@@ -374,13 +423,5 @@ Resolver.prototype.calcOperations = async function() {
 			}
 		}
 	}
-    await sleep(100);
-    var user_cnt = this.rank2.length;
-    for (var i = 1; i < user_cnt; i++) {
-        var now = $('#rank-'+ i.toString());
-        var prev = $('#rank-'+ (i - 1).toString());
-        if (now.find('.solved').text() == prev.find('.solved').text()) {
-            now.find('.rank').text(prev.find('.rank').text());
-        }
-    }
+	// 名次已由 tie-break 嚴格排定(分數 -> AC 數 -> 達到分數時間), 不再把同分併成同名次。
 }

@@ -533,17 +533,9 @@ function centerSelected() {
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-function setRank() {
-    // Same score => same rank
-    var user_cnt = vm.$data.ranks.length;
-    for (var i = 1; i < user_cnt; i++) {
-        var now = $('#rank-'+ i.toString());
-        var prev = $('#rank-'+ (i - 1).toString());
-        if (now.find('.solved').text() == prev.find('.solved').text()) {
-            now.find('.rank').text(prev.find('.rank').text());
-        }
-    }
-}
+// 名次現在由 tie-break 嚴格排定(分數 -> AC 數 -> 達到分數時間), 同分不再併成同名次,
+// 所以不再做「同分 => 同名次」的合併。保留函式與呼叫點, 名次由資料端 rank_show 提供。
+function setRank() {}
 
 // 純資料版的「套用一筆 operation」: 只改 ranks 陣列(分數/題目格/順序), 不碰 DOM 與動畫。
 // 這是 N 鍵瞬間快進的核心 -- 邏輯必須與 Operation.next() 的資料變更一致
