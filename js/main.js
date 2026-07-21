@@ -221,13 +221,19 @@ function vuejs() {
             Vue.nextTick(function(){ setRank(); focusSettledTeam(target); });
         },
 
-        // 左鍵: 倒回上一張投影片。若目前正顯示某張卡片 -> 回到「前一張」(award_shown_idx-1);
-        // 若卡片已收起 -> 重新顯示「最後看過的那張」(award_shown_idx)。都靠 rebuildToAward
-        // 從 rank_frozen 重放到目標狀態並直接出圖。
+        // 左鍵: 倒回上一張投影片。若目前正顯示某張卡片 -> 回到「前一張」; 卡片已收起 ->
+        // 重新顯示目前這張。都靠 rebuildToAward 從 rank_frozen 重放到目標狀態並直接出圖。
         jumpToPrevSlide: function() {
             var seq = getAwardSequence();
-            if(award_shown_idx < 0) { console.log('jump: no slide shown yet'); return; }
-            var target = vm.$data.slide ? award_shown_idx - 1 : award_shown_idx;
+            if(!seq.length) return;
+            // 目前在第幾個獎: 優先用指標(最後顯示過的那張); 指標未設(例如剛硬重新整理,
+            // award_shown_idx 歸零但 op_flag 由 localStorage 還原)則用 op_flag 推算。
+            var cur = award_shown_idx;
+            if(cur < 0)
+                for(var i = 0; i < seq.length; i++)
+                    if(seq[i].settle_op < vm.$data.op_flag) cur = i;
+            if(cur < 0) { console.log('jump: no award reached yet'); return; }
+            var target = vm.$data.slide ? cur - 1 : cur;
             if(target < 0) { console.log('jump: already at the first slide'); return; }
             rebuildToAward(seq[target]);
         },
