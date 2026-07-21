@@ -22,6 +22,22 @@ Legacy Vue 1.x + jQuery app with no build step. Edit `index.html`, `js/main.js`,
 - Hidden CMS participations (admin/test accounts) are dropped at export. They used to be
   kept and flagged `is_exclude`, which let a test account take first-to-solve away from
   the team that earned it.
+- **A submission's exported score is the team's running task total, not that submission's
+  own score.** CMS `score_mode = max_subtask` (the IOI 2017 rule, what this contest uses)
+  keeps the best result *per subtask* across submissions and sums them, so a team can hold
+  a score no single submission ever achieved (19, then 13, then 44 scores 63). Exporting
+  raw per-submission scores silently under-reported those teams — the resolver takes the
+  max over submissions, so it topped out at 44 — and moved real teams down the standings.
+  `accumulate_score()` folds each submission into a per-`(team, task)` accumulator;
+  `score_mode` comes from `tasks.score_mode` and anything other than `max_subtask`
+  degrades to `max`.
+- The backup's `subtask_scores` column is a compact `{idx: points}` dict, *not* CMS's raw
+  `score_details` list — `subtask_scores()` parses the latter, `parse_subtask_column()` the
+  former. Feeding one to the other returns `None` and silently degrades the whole contest
+  to `max`. Backups predating the column have no details and legitimately fall back.
+- Sanity-check a fresh `contest.json` against CMS's own scoreboard export (the RWS CSV)
+  cell by cell, not just on totals. Equal-score teams can still order differently — that is
+  the resolver's own tie-break (see below), not a scoring bug.
 - Tests: `python3 resolver-export/test_export_to_resolver.py` (run from the repo root; the
   conversion logic is pure, so any Python 3 works). The exporter's `dump` subcommand talks
   to CMS and needs that environment's own interpreter.
