@@ -6,7 +6,9 @@
         <title>2026 IONCamp Day 5</title>
         <link type="text/css" rel="stylesheet" href="libs/style/bootstrap.min.css">
         <link type="text/css" rel="stylesheet" href="libs/style/sticky-footer.css">
-        <link type="text/css" rel="stylesheet" href="css/main.css">
+        <!-- 改動 css/main.css, hiho-resolver.js, js/main.js 後務必同步 bump ?v=,
+             否則 Cloudflare 會沿用邊緣快取(預設 4 小時)繼續送舊檔 -->
+        <link type="text/css" rel="stylesheet" href="css/main.css?v=21">
     </head>
     <body class="app">
         <!-- top navbar -->
@@ -27,12 +29,27 @@
                 <div class="content">
                     <div class="name">{{ users[team.user_id].college ? users[team.user_id].college + '--' : '' }}{{ users[team.user_id].name }}</div>
                     <ul class="problems">
-                        <li v-for="n in p_count" class="{{team.problem[n+1]|problemStatus}} p-{{n+1}} item">
-                            <div class="{{team.problem[n+1]|problemStatus}} p-content">{{team.problem[n+1] | submissions}}</div>
+                        <li v-for="n in p_count" class="p-{{n+1}} item">
+                            <div class="{{team.problem[n+1]|problemStatus}} {{team.problem[n+1]|scoreLevel}} p-content">{{team.problem[n+1] | submissions}}</div>
                         </li>
                     </ul>
                 </div>
-                <div class="solved">{{ team.score }}</div>
+                <div class="solved {{team.score|totalLevel}}">{{ team.score }}</div>
+            </div>
+        </div>
+
+        <!-- 頒獎投影片: 該隊升到最終名次後全螢幕蓋掉排行榜, 按右鍵/空白鍵關閉。
+             照片 + 隊名 + 獎名的版面由 CSS 排出, 照片只是內容, 缺圖時顯示佔位。 -->
+        <div class="slide-overlay" v-if="slide">
+            <div class="slide-card">
+                <div class="slide-photo">
+                    <img v-if="slide.image_url && !slide_failed" src="{{ slide.image_url }}" @error="slideFailed">
+                    <div class="slide-photo-placeholder" v-if="!slide.image_url || slide_failed"></div>
+                </div>
+                <div class="slide-meta">
+                    <div class="slide-team">Team: {{ slide.team_name }}</div>
+                    <div class="slide-award">{{ slide.citation }}</div>
+                </div>
             </div>
         </div>
 
@@ -46,7 +63,7 @@
         <!-- Include all compiled plugins (below), or include individual files as needed -->
         <script type="text/javascript" src="libs/js/jquery.min.js"></script>
         <script type="text/javascript" src="libs/js/vue.1.js"></script>
-        <script type="text/javascript" src="hiho-resolver.js"></script>
-        <script type="text/javascript" src="js/main.js"></script>
+        <script type="text/javascript" src="hiho-resolver.js?v=21"></script>
+        <script type="text/javascript" src="js/main.js?v=21"></script>
     </body>
 </html>

@@ -1,7 +1,25 @@
 /*
     main.css
+
+    榜單是一張「部分分熱力表」: 每一格的顏色就是它的得分。
+    IOI 賽制的重點是部分分, 所以格子不該只有解出/未解出兩種狀態。
  */
 
+:root {
+    --sheet:    #F2F3F5;   /* 頁面底 */
+    --row:      #FFFFFF;   /* 列面 */
+    --ink:      #1F2933;   /* 主要文字 */
+    --ink-soft: #6B7280;   /* 隊名等次要資訊 */
+    --line:     #DDE1E6;   /* 髮絲線 */
+    --pending:  #93A1B0;   /* 封榜未揭曉 */
+
+    --row-h:     106px;    /* 必須等於 js/main.js 飛行動畫的位移量 */
+    --cell-gap:  8px;
+
+    --num: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, sans-serif;
+    --cjk: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei",
+           "Hiragino Sans GB", "Heiti TC", sans-serif;
+}
 
 /*
     reset bootstrap
@@ -10,105 +28,300 @@
     margin-bottom: 0;
 }
 
+body {
+    background: var(--sheet);
+}
+
 /*
     common
  */
 .app {
-    color: white;
+    color: var(--ink);
+    background: var(--sheet);
+    font-family: var(--num), var(--cjk);
 }
 .rank-list {
-    background: repeating-linear-gradient(
-      180deg,
-      #3e3e3e 0px,
-      #3e3e3e 103px,
-      black 103px,
-      black 206px
-    );
+    background: var(--sheet);
 }
-.item {
-    border-radius: 3px;
-}
-.rank, .content, .problems li {
-    float: left;
-}
-.solved {
-    float: right;
-}
-.rank, .solved {
-    font-size: 35px;
-    text-align: center;
-    vertical-align: middle;
-    line-height: 83px;
-}
+
+/* 一列 = 名次 | 隊名 + 分數格 | 總分。
+   高度釘死成 --row-h: 飛行動畫按這個數字位移, 差一點就會逐列累積錯位。 */
 .rank-list-item {
-    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: var(--row-h);
+    box-sizing: border-box;
+    padding: 8px 28px;
     position: relative;
-    background: transparent;
+    background: var(--row);
+    border-bottom: 1px solid var(--line);
 }
-
-.ac {
-    background-color: #5eb95e;
-}
-.failed {
-    background-color: #dd514c;
-}
-.frozen {
-    background-color: #607D8B;
-}
-.untouched {
-    background-color: #1f1f1f;
-    color: transparent;
-}
-
-.selected {
-    background-color: #406b82;
-}
-
-.uncover {
-    background-color: #BD995B;
-    animation: rotating 150ms infinite;
-    -webkit-animation: rotating 150ms infinite; /*Safari and Chrome*/
-}
-
-@keyframes rotating {
-    from { transform: rotateX(0); }
-    to { transform: rotateX(180deg); }
-}
-
-@-webkit-keyframes rotating {/*Safari and Chrome*/
-    from { transform: rotateX(0); }
-    to { transform: rotateX(180deg); }
-}
-
-/*
-    index
- */
 
 .rank {
-    width: 58px;
-    height: 58px;
-    margin-right: 15px;
+    flex: 0 0 84px;
+    font-size: 34px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--ink);
+}
+
+.content {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
 }
 .name {
-    font-size: 35px;
-    margin-bottom: 5px;
+    font-family: var(--cjk);
+    font-size: 24px;
+    font-weight: 500;
+    line-height: 28px;
+    color: var(--ink-soft);
+    margin: 0 0 4px 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
+/* 格子平分整列寬度, 所以題數改變也不用調 CSS */
 .problems {
     list-style-type: none;
     margin: 0;
     padding: 0;
-    font-size: 12px;
+    display: flex;
+    gap: var(--cell-gap);
+    flex: 1 1 auto;
+    min-height: 0;
 }
 .problems .item {
-    padding: 2px;
-    margin-right: 5px;
-    width: 80px;
-    text-align: center;
+    flex: 1 1 0;
+    min-width: 0;
+    /* 讓 .p-content 的 rotateX 變成真正的翻牌 -- 沒有透視只會是垂直壓扁 */
+    perspective: 700px;
 }
-.problems .item .p-content {
-    padding: 1px 0;
-    font-size: 15px;
+.p-content {
+    height: 100%;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #24303B;
+    background: transparent;
 }
+
 .solved {
-    width: 70px;
+    flex: 0 0 132px;
+    height: 62px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #FFFFFF;
+}
+
+/*
+    格子狀態
+ */
+
+/* 未作答: 只留髮絲框, 才能和「作答但得 0 分」(色帶最紅端) 分得開 */
+.untouched {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: transparent;
+}
+
+/* 封榜中: 刻意不在分數色帶上, 它還沒有分數。斜紋讀起來像未拆封 */
+.frozen {
+    background-color: var(--pending);
+    background-image: repeating-linear-gradient(
+        135deg,
+        rgba(255,255,255,.16) 0 6px,
+        rgba(255,255,255,0)   6px 12px
+    );
+    color: #FFFFFF;
+    font-size: 24px;
+}
+
+/*
+    分數色帶 (紅 -> 橙 -> 黃 -> 綠), 5 分一階。由 js/main.js 的 scoreLevel filter 指定。
+ */
+.sc-0   { background:#E8635F; }
+.sc-5   { background:#E86E5E; }
+.sc-10  { background:#E8795E; }
+.sc-15  { background:#E8845D; }
+.sc-20  { background:#E88F5D; }
+.sc-25  { background:#E89A5C; }
+.sc-30  { background:#E6A35C; }
+.sc-35  { background:#E4AC5C; }
+.sc-40  { background:#E3B65C; }
+.sc-45  { background:#E1BF5C; }
+.sc-50  { background:#DFC85C; }
+.sc-55  { background:#D7C75C; }
+.sc-60  { background:#D0C75C; }
+.sc-65  { background:#C8C65C; }
+.sc-70  { background:#C1C65C; }
+.sc-75  { background:#B9C55C; }
+.sc-80  { background:#ADC25C; }
+.sc-85  { background:#A2C05C; }
+.sc-90  { background:#96BD5C; }
+.sc-95  { background:#8BBB5C; }
+.sc-100 { background:#7FB85C; }
+
+/*
+    總分熱力階, 相對於當下榜上最高分。領先者拉開時顏色會跟著加深。
+ */
+.tt-0   { background:#B6863B; }
+.tt-10  { background:#B08A33; }
+.tt-20  { background:#A98D2C; }
+.tt-30  { background:#A29125; }
+.tt-40  { background:#99931E; }
+.tt-50  { background:#8E9219; }
+.tt-60  { background:#7F9017; }
+.tt-70  { background:#6F8D18; }
+.tt-80  { background:#5D8A1C; }
+.tt-90  { background:#4E8C22; }
+.tt-100 { background:#3F8F29; }
+
+/*
+    正在翻牌的隊伍: 整列從紙面浮起, 其餘平貼。
+    這是全場唯一一個被強調的東西, 其他地方保持安靜。
+ */
+/* 正在翻牌的隊伍: 淡黃色整列。平面, 不用陰影浮雕。
+   陰影拿掉之後黃色要獨力承擔焦點訊號, 所以比單純的米白再飽和一階,
+   否則在白列之間看不出來。 */
+.selected {
+    background: #FCEFC0;
+    border-bottom-color: #F3E1A6;
+    z-index: 5;
+}
+/* 未作答在黃底上要把框線壓深一點, 原本的淺灰會被黃色吃掉 */
+.selected .untouched {
+    border-color: rgba(31, 41, 51, .18);
+}
+
+/*
+    翻牌: 立體翻面 + 離開紙面的投影
+ */
+.uncover {
+    background-color: #C79A3C !important;
+    /* 蓋掉 .frozen 的斜紋: 翻牌是「正在揭曉」, 不該還帶著「未拆封」的紋理 */
+    background-image: none !important;
+    border-color: transparent;
+    color: #FFFFFF;
+    box-shadow: 0 8px 20px rgba(20, 32, 46, .35);
+    animation: rotating 600ms infinite;
+    -webkit-animation: rotating 600ms infinite; /*Safari and Chrome*/
+}
+
+/* 必須轉滿 360 度: 停在 180 度會讓卡片以背面收尾, 再瞬間彈回正面 */
+@keyframes rotating {
+    from { transform: rotateX(0); }
+    to   { transform: rotateX(360deg); }
+}
+
+@-webkit-keyframes rotating {/*Safari and Chrome*/
+    from { transform: rotateX(0); }
+    to   { transform: rotateX(360deg); }
+}
+
+/*
+    頒獎投影片 -- 與榜單是兩個場景, 這裡維持全暗
+ */
+/*
+    頒獎投影片: 全螢幕淺色背景 (比照榜單 --sheet), 中央一張白卡片。
+    卡片 = 頂部熱力漸層條 (榜單的部分分色階) + 大照片 + 一行 Team/獎名。
+    照片只是內容, 缺圖或載不到時顯示中性佔位, 文字照常。
+ */
+.slide-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    background: var(--sheet);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4vh 4vw;
+    box-sizing: border-box;
+    font-family: var(--num), var(--cjk);
+}
+.slide-card {
+    background: var(--row);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 24px 60px rgba(31, 41, 51, .16);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-width: min(92vw, 1100px);
+    max-height: 92vh;
+    box-sizing: border-box;
+}
+/* 頂部熱力漸層條: 榜單部分分色階 sc-0(#E8635F) -> sc-100(#7FB85C) */
+.slide-card::before {
+    content: "";
+    display: block;
+    height: 8px;
+    flex: 0 0 auto;
+    background: linear-gradient(90deg,
+        #E8635F, #E8845D, #E89A5C, #E1BF5C, #DFC85C,
+        #C1C65C, #A2C05C, #8BBB5C, #7FB85C);
+}
+.slide-photo {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 32px 20px;
+    box-sizing: border-box;
+}
+.slide-photo img {
+    max-width: 100%;
+    max-height: 66vh;
+    object-fit: contain;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+}
+/* 缺圖佔位: 中性淺灰塊, 不搶戲 */
+.slide-photo-placeholder {
+    width: min(60vw, 640px);
+    height: 40vh;
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    background: var(--sheet);
+}
+.slide-meta {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 20px 40px 32px;
+    border-top: 1px solid var(--line);
+    font-family: var(--cjk), var(--num);
+}
+.slide-team {
+    color: var(--ink);
+    font-size: 40px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.slide-award {
+    color: var(--ink-soft);
+    font-size: 44px;
+    font-weight: 700;
+    white-space: nowrap;
 }

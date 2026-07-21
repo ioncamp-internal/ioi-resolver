@@ -9,8 +9,19 @@ function vuejs() {
     var RANKS_KEY = 'icpc-ranks';
     var OPER_FLAG_KEY = 'operation-flag';
 
-    var OPEN_DELAY_TIME = 0; //闪烁时间
-    var ROLLING_TIME = 1000; //排名上升时间
+    var OPEN_DELAY_TIME = 0;   //闪烁时间
+    var FLY_DELAY_MS = 300;    // 翻轉完成到起飛之間的停頓, 讓觀眾看清楚成績
+    // 上升時間正比於距離, 所有隊伍同一個基準速度。
+    // 原本是固定時距, 導致移動 1 列跟移動 15 列花一樣久, 距離越遠看起來越快。
+    var FLY_SPEED_PX_S = 600;  // 平均每秒移動的像素
+    var FLY_MIN_MS = 250;      // 太短的移動仍要看得出來在動
+    function flyDuration(distance) {
+        return Math.max(FLY_MIN_MS, Math.abs(distance) / FLY_SPEED_PX_S * 1000);
+    }
+    // 起飛是漸加速的: 一開始慢慢離地, 越飛越快。
+    // 1 = 等速, 2 = 二次加速, 數字越大起步越慢、後段越猛。
+    var FLY_EASE_POWER = 2;
+    $.easing.flyUp = function(p){ return Math.pow(p, FLY_EASE_POWER); };
     window.Storage = {
         fetch: function(type) {
             if(type == 'ranks')
@@ -32,8 +43,13 @@ function vuejs() {
     var SPEED_TIERS = [
         { max_percentile: 0.25, multiplier: 1.6  }, // 前 25%: 慢速
         { max_percentile: 0.50, multiplier: 1.0  }, // 26%-50%: 中速
-        { max_percentile: 1.0,  multiplier: 0.15 }  // 51%-100%: 快速
+        { max_percentile: 1.0,  multiplier: 0.7  }  // 51%-100%: 快速
     ];
+    // 一次 frozen submission 翻一次牌; multiplier 調整的是「每次翻多快」, 不是「翻幾次」。
+    // 翻轉週期由 JS 寫進 inline style, css/main.css 的值只是 JS 失效時的後備。
+    var FLIP_BASE_MS = 600;
+    var FLIP_ACCEL   = 0.8; // 每翻一次就縮短為前一次的 8 成, 越翻越快
+    var FLIP_MIN_MS  = 120; // 加速下限, 再快就看不出在翻了
     function getSpeedConfig(old_rank, total) {
         var percentile = (old_rank + 1) / total;
         for(var i = 0; i < SPEED_TIERS.length; i++) {
@@ -43,9 +59,131 @@ function vuejs() {
         return SPEED_TIERS[SPEED_TIERS.length - 1];
     }
 
+    var slide_shown_at = 0;
+    var SLIDE_MIN_MS = 300;    // 投影片剛跳出的這段時間內忽略按鍵, 避免連按秒關
+
+    // 名次定案的停頓: 每筆操作結束後, 這一批定案的隊伍會被逐一 focus。
+    // 每隊都停, 不是只有拿獎的才停。按鍵前進 -- 有投影片就先出投影片, 再按才換下一隊。
+    var settle_queue = [];
+    var settle_idx = -1;
+
+    function inSettleQueue() { return settle_idx >= 0; }
+
+    function focusSettledTeam(user_id) {
+        // 升幅超過一個螢幕高時, 飛行動畫是刻意讓該列飛出畫面上緣再靠重繪歸位
+        // (見下方 distance 的處理), 所以這裡務必把它捲回視野正中央。
+        var el_row = $('#rank-' + resolver.final_row[user_id]);
+        $('.selected').removeClass('selected');
+        el_row.addClass('selected');
+        if(el_row.length) focusElement(el_row[0]);
+    }
+
+    // 移到這一批的下一隊; 整批處理完就把 highlight 還給下一個要翻的隊伍並放行
+    function advanceSettleQueue() {
+        settle_idx++;
+        if(settle_idx < settle_queue.length) {
+            focusSettledTeam(settle_queue[settle_idx]);
+            return;
+        }
+        settle_queue = [];
+        settle_idx = -1;
+        $('.selected').removeClass('selected');
+        if(vm.$data.op_flag < vm.$data.operations.length) {
+            var op = vm.$data.operations[vm.$data.op_flag];
+            $('#rank-' + op.old_rank).addClass('selected');
+            centerSelected();
+        }
+        vm.$data.op_status = true;
+    }
+
+    function showSlide(slide) {
+        vm.$data.slide_failed = false;
+        vm.$data.slide = slide;
+        slide_shown_at = Date.now();
+    }
+
+    // 兩條收尾路徑(原地不動 / 飛上去)共用的交棒動作。
+    // 呼叫時該隊名次已定案, 所以這裡是掛頒獎投影片的正確時機。
+    function finishOperation(op_index, el_old, problem_index) {
+        var op_length = vm.$data.operations.length - 1;
+        vm.selected(el_old, 'remove');
+        if(vm.$data.op_flag < op_length) {
+            var op_next = vm.$data.operations[vm.$data.op_flag + 1];
+            vm.selected($('#rank-' + op_next.old_rank), 'add');
+        }
+        el_old.find('.p-' + problem_index).removeClass('uncover');
+        vm.$data.op_flag += 1;
+
+        var settling = resolver.settle_by_op[op_index];
+        if(settling && settling.length) {
+            // op_status 保持 false: 整批 focus 走完之前都不接受推進揭曉
+            settle_queue = settling;
+            settle_idx = -1;
+            advanceSettleQueue();
+        } else {
+            centerSelected();   // 下一隊先就定位, 按鍵時直接開翻
+            vm.$data.op_status = true;
+        }
+    }
+
     window.Operation = {
+        inSettleQueue: inSettleQueue,
+
+        // 名次定案停頓中的按鍵: 先出投影片, 再按才換下一隊。太快按會被忽略。
+        settleStep: function() {
+            if(vm.$data.slide) {
+                if(Date.now() - slide_shown_at < SLIDE_MIN_MS) return;
+                vm.$data.slide = null;
+                advanceSettleQueue();
+                return;
+            }
+            var slide = resolver.slides_by_team[settle_queue[settle_idx]];
+            if(slide) showSlide(slide);
+            else advanceSettleQueue();
+        },
+
+        // N 鍵: 瞬間快進到「下一個有投影片的隊伍」定案的狀態, highlight 停在該隊,
+        // 不自動出圖 -- 主持人再按右鍵/空白, 由 settleStep 彈卡片、之後沿用原流程。
+        // 走純資料重播(applyOpData) + 單次重繪, 不碰動畫路徑。只在 idle 時由 keydown 呼叫。
+        jumpToNextSlide: function() {
+            // 在脫離響應式的副本上算, 最後一次 vm.$set 提交, 避免逐筆重繪與中間畫面
+            var ranks = JSON.parse(JSON.stringify(vm.$data.ranks));
+            var ops = vm.$data.operations;
+            var flag = vm.$data.op_flag;
+            var target = null, target_idx = -1, settle_op = -1;
+            while(flag < ops.length) {
+                var op_index = flag;
+                applyOpData(ranks, ops[op_index]);
+                flag++;
+                var settling = resolver.settle_by_op[op_index];
+                if(settling) {
+                    for(var i = 0; i < settling.length; i++) {
+                        if(resolver.slides_by_team[settling[i]]) {
+                            target = settling[i]; target_idx = i; settle_op = op_index; break;
+                        }
+                    }
+                }
+                if(target) break;
+            }
+            if(!target) { console.log('jump: no more award teams ahead'); return; }
+
+            // rank_show 依最終位置重算(排除隊維持 "*"), 交給 setRank 收斂同分名次
+            for(var j = 0; j < ranks.length; j++)
+                if(ranks[j].rank_show !== '*') ranks[j].rank_show = j + 1;
+
+            vm.$set('ranks', ranks);       // 一次提交 -> Vue 依 track-by 重排到定位
+            vm.$data.op_flag = flag;
+            vm.$data.slide = null;
+            // 進入既有定案停頓, 等待按鍵出圖; highlight/捲動要等重繪後才抓得到列
+            settle_queue = resolver.settle_by_op[settle_op];
+            settle_idx = target_idx;
+            vm.$data.op_status = false;
+            Vue.nextTick(function(){ setRank(); focusSettledTeam(target); });
+        },
+
         next: async function() {
             vm.$data.op_status = false;
+            var op_index = vm.$data.op_flag;
             var op = vm.$data.operations[vm.$data.op_flag];
             var op_length = vm.$data.operations.length - 1;
             if(vm.$data.op_flag < op_length)
@@ -58,19 +196,32 @@ function vuejs() {
             var el_old = $('#rank-' + op.old_rank);
             var el_new = $('#rank-' + op.new_rank);
 
-            // Rotate
-            el_old
-                .find('.p-'+op.problem_index)
-                .find('.p-content').addClass('uncover');
-            await sleep(parseInt(op.frozen_submissions) * 600 * speed_mult);
-            el_old
-                .find('.p-'+op.problem_index)
-                .find('.p-content').removeClass('uncover');
+            // Rotate: 翻的次數等於封榜後的提交次數, 且一次比一次快。
+            // 每圈都是完整 360 度, 所以逐圈重啟動畫在視覺上是連續的。
+            var flip_count = Math.max(1, parseInt(op.frozen_submissions) || 0);
+            var flip_duration = FLIP_BASE_MS * speed_mult;
+            var el_flip = el_old.find('.p-'+op.problem_index).find('.p-content');
+            el_flip.addClass('uncover');
+            for(var f = 0; f < flip_count; f++) {
+                // 先關掉 animation-name 再開, 中間強制 reflow, 這樣新的週期才會從 0 度重跑
+                el_flip.css({'animation-name': 'none', '-webkit-animation-name': 'none'});
+                el_flip[0].offsetWidth;
+                el_flip.css({
+                    'animation-duration': flip_duration+'ms', '-webkit-animation-duration': flip_duration+'ms',
+                    'animation-name': 'rotating', '-webkit-animation-name': 'rotating'
+                });
+                await sleep(flip_duration);
+                flip_duration = Math.max(FLIP_MIN_MS, flip_duration * FLIP_ACCEL);
+            }
+            el_flip
+                .removeClass('uncover')
+                .css({
+                    'animation-duration': '', '-webkit-animation-duration': '',
+                    'animation-name': '', '-webkit-animation-name': ''
+                });
 
             if(op.new_rank == op.old_rank){
-                if(vm.$data.op_flag < op_length)
-                    var el_old_next = $('#rank-' + op_next.old_rank);
-                setTimeout(function(){ 
+                setTimeout(function(){
                     var ver = op.new_verdict;
                     if(ver == 'AC'){
                         num = 100;
@@ -110,13 +261,8 @@ function vuejs() {
                     Vue.nextTick(setRank);
 
                     setTimeout(function(){
-                        vm.selected(el_old, 'remove');
-                        if(vm.$data.op_flag < op_length)
-                            vm.selected(el_old_next, 'add');
-                        el_old.find('.p-'+op.problem_index).removeClass('uncover');
-                        vm.$data.op_flag += 1;
-                        vm.$data.op_status = true;
-                    }, OPEN_DELAY_TIME + 100);
+                        finishOperation(op_index, el_old, op.problem_index);
+                    }, FLY_DELAY_MS);   // 沒有飛行, 但停頓保持一致
                 }, OPEN_DELAY_TIME);
             }else{
                 var old_pos_top = el_old.position().top;
@@ -186,10 +332,10 @@ function vuejs() {
                             });
                         });
 
-                    setTimeout(function(){ 
+                    setTimeout(function(){
                         el_old
                             .css('position', 'relative')
-                            .animate({ top: distance+'px' }, ROLLING_TIME * speed_mult, function(){
+                            .animate({ top: distance+'px' }, flyDuration(distance), 'flyUp', function(){
                                 el_new.removeAttr('style');
                                 el_old.removeAttr('style');
                                 var ranks_tmp = $.extend(true, [], ranks);
@@ -203,26 +349,20 @@ function vuejs() {
 
                                 Vue.nextTick(function () {
                                     el_obj.forEach(function(val,i){ el_obj[i].removeAttr('style'); });
-                                    el_old.find('.p-'+op.problem_index).removeClass('uncover');
-                                    if(vm.$data.op_flag < op_length)
-                                        var el_old_next = $('#rank-' + op_next.old_rank);
-                                    vm.selected(el_old, 'remove');
-                                    if(vm.$data.op_flag < op_length)
-                                        vm.selected(el_old_next, 'add');
-                                    vm.$data.op_flag += 1;
-                                    vm.$data.op_status = true;
+                                    finishOperation(op_index, el_old, op.problem_index);
                                 });
                                 Vue.nextTick(setRank);
                             });
+                        // 被擠下來的列只移動一格, 用同一個速度算它自己的時間
                         for(var i = 0 ; i<el_obj.length ; ++i) {
                             if(106*(i-1)<=win_heigth){
-                                el_obj[i].animate({'top': 106+'px'},ROLLING_TIME * speed_mult);
+                                el_obj[i].animate({'top': 106+'px'}, flyDuration(106), 'flyUp');
                             }
                             else {
                                 el_obj[i].css({'top': 106+'px'});
                             }
                         }
-                    }, OPEN_DELAY_TIME + 100);
+                    }, FLY_DELAY_MS);
                 }, OPEN_DELAY_TIME);
             }
         }
@@ -230,6 +370,33 @@ function vuejs() {
     
     Vue.filter('problemStatus', function (problem) {
         return resolver.status(problem);
+    });
+
+    // 已定案的格子依得分上色(色帶見 css/main.css 的 .sc-*), 5 分一階。
+    // 封榜中與未作答刻意不給色帶: 前者還沒有分數, 混進色帶等於劇透;
+    // 後者要和「作答但得 0 分」看得出差別。
+    Vue.filter('scoreLevel', function (problem) {
+        var st = resolver.status(problem);
+        if(st !== 'ac' && st !== 'failed') return '';
+        var score = 0;
+        if(st === 'ac') score = 100;
+        else {
+            var ver = problem.old_verdict;
+            if(ver && ver[0] === 'P') score = parseInt(ver.substring(1)) || 0;
+        }
+        return 'sc-' + (Math.round(Math.min(100, Math.max(0, score)) / 5) * 5);
+    });
+
+    // 總分的熱力階, 相對於當下榜上最高分 -- 揭曉過程中會隨著領先者拉開而加深
+    Vue.filter('totalLevel', function (score) {
+        // Vue 1 會把 filter 的 this 綁到 vm。不能用裸的 vm --
+        // filter 註冊時 window.vm 還沒指派, 首次渲染會丟 ReferenceError,
+        // class 就整個渲染不出來(連帶讓 setRank 抓不到 .solved 而把名次全寫成第 1 名)。
+        var ranks = (this && this.ranks) || (window.vm && window.vm.$data.ranks), top = 0;
+        for(var i = 0; ranks && i < ranks.length; i++)
+            if(ranks[i].score > top) top = ranks[i].score;
+        if(!top) return 'tt-100';
+        return 'tt-' + (Math.round(Math.min(100, score / top * 100) / 10) * 10);
     });
     
     Vue.filter('submissions', function (problem) {
@@ -263,7 +430,9 @@ function vuejs() {
             p_count: resolver.problem_count,
             ranks: Storage.fetch('ranks'),
             operations: resolver.operations,
-            users: resolver.users
+            users: resolver.users,
+            slide: null,       // 目前顯示的頒獎投影片, null 代表沒有
+            slide_failed: false // 圖片載不到 -> 只顯示 citation 文字
         },
 
         ready: function () {
@@ -278,6 +447,7 @@ function vuejs() {
             if(this.op_flag < this.operations.length){
                 var op = this.operations[this.op_flag];
                 this.selected($('#rank-'+op.old_rank), 'add');
+                Vue.nextTick(centerSelected);   // 一開場第一隊就在中央
             }
         },
 
@@ -294,6 +464,12 @@ function vuejs() {
                     el.addClass('selected');
                 }else if(type == 'remove')
                     el.removeClass('selected');
+            },
+
+            // 圖片還沒做好或路徑錯 -> 退回只顯示 citation 文字, 不要破圖
+            slideFailed: function(){
+                console.warn('slides: image not found, falling back to citation text');
+                this.slide_failed = true;
             }
         }
     });
@@ -303,33 +479,56 @@ $.getJSON("contest.json", function(data){
     var resolver = new Resolver(data.solutions, data.users, data.problem_count, data.frozen_second);
     window.resolver = resolver;
     resolver.calcOperations();
-    vuejs();
+    resolver.buildSettleQueue();   // 定案停頓與投影片無關, 沒有 slides.json 也要有
 
-    document.onkeydown = function(event){
-        var e = event || window.event || arguments.callee.caller.arguments[0];
-        if(e && e.keyCode == 39 && vm.$data.op_status){ // key right
-            var elem = document.getElementsByClassName("selected")[0];
-            if (!isScrolledIntoView(elem))
-                focusElement(elem);
-            Operation.next();
-        }
-        if(e && e.keyCode == 13) {
-            focusElement(document.getElementsByClassName("selected")[0]);
-        }
-    };
+    // slides.json 是選配: 載不到或壞掉就照常揭曉, 只是不播投影片
+    $.getJSON("slides.json")
+        .done(function(cfg){ resolver.resolveSlides(cfg); })
+        .fail(function(){ console.warn('slides: slides.json unavailable, running without slides'); })
+        .always(start);
+
+    function start(){
+        vuejs();
+
+        document.onkeydown = function(event){
+            var e = event || window.event || arguments.callee.caller.arguments[0];
+            if(!e) return;
+            var advance = (e.keyCode == 39 || e.keyCode == 32); // 右鍵 / 空白鍵
+
+            // 名次定案的停頓中(含投影片顯示中): 按鍵只在這個停頓內前進, 不推進揭曉
+            if(Operation.inSettleQueue()){
+                if(advance){
+                    e.preventDefault();  // 空白鍵預設會捲動頁面
+                    Operation.settleStep();
+                }
+                return;
+            }
+
+            // N 鍵: idle 時瞬間快進到下一個頒獎隊伍(見 Operation.jumpToNextSlide)
+            if(e.keyCode == 78 && vm.$data.op_status){
+                e.preventDefault();
+                Operation.jumpToNextSlide();
+                return;
+            }
+
+            if(advance && vm.$data.op_status){
+                e.preventDefault();
+                centerSelected();   // 保險: 正常情況下上一筆收尾時已經置中了
+                Operation.next();
+            }
+            if(e.keyCode == 13) {
+                centerSelected();
+            }
+        };
+    }
 });
 
-function isScrolledIntoView(elem) {
-    var docViewTop = $(window).scrollTop();
-    var docViewBottom = docViewTop + $(window).height();
-
-    var elemTop = $(elem).offset().top;
-    var elemBottom = elemTop + $(elem).height();
-
-    return ((elemBottom <= docViewBottom) && (elemTop >= docViewTop));
-}
 function focusElement(elem) {
-    elem.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if(elem) elem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+// 正在翻牌的隊伍固定停在畫面正中央
+function centerSelected() {
+    focusElement(document.getElementsByClassName('selected')[0]);
 }
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -344,4 +543,48 @@ function setRank() {
             now.find('.rank').text(prev.find('.rank').text());
         }
     }
+}
+
+// 純資料版的「套用一筆 operation」: 只改 ranks 陣列(分數/題目格/順序), 不碰 DOM 與動畫。
+// 這是 N 鍵瞬間快進的核心 -- 邏輯必須與 Operation.next() 的資料變更一致
+// (見 js/main.js 飛行分支與 new_rank==old_rank 原地特例)。刻意寫成無 DOM 依賴,
+// 好在 node 下對真實 contest.json 驗證(見 test/repo 說明)。
+// rank_show 不在這裡維護: 快進收尾時一次性由位置重算再交給 setRank 收斂同分, 更穩。
+function applyOpData(ranks, op) {
+    var rank_old = ranks[op.old_rank];
+    var cell = rank_old.problem[op.problem_index];
+    var ver = op.new_verdict;
+    if (ver == 'AC') {
+        var num = 100;
+        var ver2 = op.old_verdict;            // 注意: AC 分支比對的是 op.old_verdict
+        if (ver2 && ver2[0] == 'P') num -= parseInt(ver2.substring(1));
+        rank_old.score += num;
+    } else if (ver && ver[0] == 'P') {
+        var num = parseInt(ver.substring(1));
+        var ver2 = cell.old_verdict;          // P 分支比對的是格子目前的 verdict
+        if (ver2 && ver2[0] == 'P') {
+            var num2 = parseInt(ver2.substring(1));
+            var mx = Math.max(num, num2);
+            op.new_verdict = 'P' + mx.toString();   // 與動畫路徑一致: 就地合併成較高分
+            num = (num > num2) ? (num - num2) : 0;
+        }
+        rank_old.score += num;
+    }
+    cell.old_verdict = op.new_verdict;
+    cell.new_verdict = 'NA';
+    if (op.new_verdict == 'AC') {
+        cell.old_submissions = op.new_submissions;
+        cell.frozen_submissions = 0;
+        cell.new_submissions = 0;
+    } else {
+        cell.old_submissions += op.frozen_submissions;
+        cell.frozen_submissions = 0;
+        cell.new_submissions = 0;
+    }
+    // 名次上升: 把該隊從 old_rank 移到 new_rank, 中間各隊順勢下移一格(等同動畫的重排)
+    if (op.new_rank != op.old_rank) {
+        ranks.splice(op.old_rank, 1);
+        ranks.splice(op.new_rank, 0, rank_old);
+    }
+    return ranks;
 }
