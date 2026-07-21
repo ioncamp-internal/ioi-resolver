@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "slides_dir": "slides",
   "include_first_to_solve_before_freeze": true,
   "rules": [
